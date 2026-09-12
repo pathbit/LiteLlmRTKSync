@@ -8,6 +8,7 @@
 - [Logging](Logging)
 - [Architecture](Architecture)
 - [Remote Access](Remote-Access)
+- [Egress Testing](Egress-Testing)
 - [Rate Limit Coherence](Rate-Limit-Coherence)
 - [Troubleshooting](Troubleshooting)
 - [Upstream Fixes](Upstream-Fixes)

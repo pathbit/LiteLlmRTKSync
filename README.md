@@ -313,8 +313,9 @@ Dashboard capabilities:
 * Live operational metrics (virtual keys, teams, models, findings by severity).
 * Expiry countdown per virtual key, with an undeclared expiry shown as undeclared.
 * Rate-limit coherence report naming the field, both values and the consequence.
-* Proxy liveness card against `/health/liveliness`; the panel's own `/healthz` answers `OK` or `LITELLM_UNREACHABLE`.
-* Manual inspection trigger (`POST /acoes/atualizar`) and full state as JSON (`GET /api/status`).
+* Proxy liveness card against `/health/liveliness`, with the measured latency and the proxy base URL; the panel's own `/healthz` answers `OK` or `LITELLM_UNREACHABLE`.
+* English, Portuguese and Spanish in the flag selector, stored server-side so the choice survives a browser change.
+* Manual inspection trigger (`POST /acoes/atualizar`), on-demand proxy probe (`POST /acoes/testar-gateway`) and full state as JSON (`GET /api/status`).
 
 ---
 

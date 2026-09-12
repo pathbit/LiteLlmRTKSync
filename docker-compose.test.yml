@@ -7,7 +7,7 @@
 #   docker compose -f docker-compose.test.yml up -d
 #   docker compose -f docker-compose.test.yml down -v
 
-name: litellm-rtksync-test
+name: litellmrtksync-test
 
 services:
   postgres:

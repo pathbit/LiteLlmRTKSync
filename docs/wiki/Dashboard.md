@@ -44,6 +44,8 @@ up" are never confused for each other.
 | `/` | GET | The panel |
 | `/api/status` | GET | Full state as JSON |
 | `/acoes/atualizar` | POST | Run an inspection cycle now |
+| `/acoes/testar-gateway` | POST | Probe the proxy's liveness right now |
+| `/acoes/idioma` | POST | Store the interface language |
 | `/acoes/credenciais` | POST | Change the panel password |
 | `/credenciais-atualizadas` | GET | Confirmation page after a password change |
 
@@ -59,8 +61,8 @@ produce a bare `401` right after the change succeeded.
 
 ## Language
 
-English by default, with Portuguese and Spanish in the flag selector. The choice is stored per
-browser, in the panel's own preferences, and applies to every page including the findings.
+English by default, with Portuguese and Spanish in the flag selector. The choice is stored on the
+server, in the panel's own preferences database, so it survives a browser change and a cache wipe.
 
 Flag icons come from `flag-icons` on jsDelivr; the Content-Security-Policy allows that host for
 images precisely so the flags render.

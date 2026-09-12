@@ -140,6 +140,11 @@ def verificar(raiz: str, nome: str) -> List[str]:
             for var in RX_ENV.findall(linha):
                 if var in NAO_SAO_VARIAVEIS or RUIDO.match(var):
                     continue
+                # Codigo de log, nao variavel: TCP_TUNNEL/200, HIER_DIRECT/1.2.3.4
+                # e NONE_NONE/000 aparecem em trecho de log colado na pagina, e
+                # sempre com uma barra logo depois.
+                if re.search(re.escape(var) + r"/", linha):
+                    continue
                 if var not in env_ok:
                     problemas.append(f"{nome}/{rel}:{n}  variável citada e não usada no código: {var}")
 
