@@ -1,0 +1,87 @@
+"""O .env.example precisa cobrir toda variavel que o codigo realmente le.
+
+Documentacao defasada nao e detalhe: quem implanta copia o exemplo, nao le o
+codigo. Uma variavel que o programa consulta e o exemplo nao cita e uma opcao
+que so existe para quem leu a fonte -- e foi exatamente o que o usuario
+encontrou ao abrir o arquivo.
+
+Este teste compara os dois conjuntos e falha nomeando a diferenca, entao a
+defasagem aparece no CI em vez de aparecer em producao.
+"""
+
+import os
+import pathlib
+import re
+import unittest
+
+import litellm_rtksync
+
+RAIZ_PACOTE = pathlib.Path(litellm_rtksync.__file__).parent
+RAIZ_REPO = RAIZ_PACOTE.parent.parent
+ENV_EXAMPLE = RAIZ_REPO / ".env.example"
+
+# Variaveis da stack de teste (docker-compose.test.yml), lidas pelo Postgres e
+# pelo proprio LiteLLM -- nao por este programa.
+DO_GATEWAY = {"POSTGRES_PASSWORD", "LITELLM_SALT_KEY"}
+
+LEITURA = re.compile(r'os\.(?:environ\.get|getenv)\(\s*["\']([A-Z0-9_]+)["\']')
+INDICE = re.compile(r'os\.environ\[\s*["\']([A-Z0-9_]+)["\']')
+# O config nao chama os.environ diretamente em todo lugar: ele passa por
+# auxiliares que fazem a conversao de tipo. Sem enxergar essas chamadas, o teste
+# acusaria como "documentada e nao lida" toda variavel que passa por elas.
+AUXILIARES = re.compile(r'\b_(?:flag|inteiro_opcional|decimal_opcional)\(\s*["\']([A-Z0-9_]+)["\']')
+DECLARACAO = re.compile(r'^#?\s*([A-Z0-9_]+)=', re.M)
+
+
+def variaveis_lidas():
+    encontradas = set()
+    for caminho in RAIZ_PACOTE.rglob("*.py"):
+        texto = caminho.read_text(encoding="utf-8")
+        encontradas |= set(LEITURA.findall(texto))
+        encontradas |= set(INDICE.findall(texto))
+        encontradas |= set(AUXILIARES.findall(texto))
+    return encontradas
+
+
+def variaveis_documentadas():
+    return set(DECLARACAO.findall(ENV_EXAMPLE.read_text(encoding="utf-8")))
+
+
+class TestDocumentacaoDeAmbiente(unittest.TestCase):
+    def test_the_example_file_exists(self):
+        self.assertTrue(ENV_EXAMPLE.is_file(), f"esperado em {ENV_EXAMPLE}")
+
+    def test_every_variable_the_code_reads_is_documented(self):
+        faltando = sorted(variaveis_lidas() - variaveis_documentadas())
+        self.assertEqual(
+            faltando, [],
+            "variaveis lidas pelo codigo e ausentes do .env.example: " + ", ".join(faltando),
+        )
+
+    def test_the_example_documents_nothing_the_code_ignores(self):
+        sobrando = sorted(variaveis_documentadas() - variaveis_lidas() - DO_GATEWAY)
+        self.assertEqual(
+            sobrando, [],
+            "variaveis no .env.example que programa nenhum le: " + ", ".join(sobrando),
+        )
+
+    def test_the_example_carries_no_credential_value(self):
+        """Valor publicado em arquivo de exemplo e credencial publica."""
+        texto = ENV_EXAMPLE.read_text(encoding="utf-8")
+        suspeitos = re.findall(
+            r'^(?!#)\s*([A-Z0-9_]*(?:PASSWORD|SECRET|TOKEN|KEY)[A-Z0-9_]*)=(.+)$',
+            texto, re.M,
+        )
+        # Interruptor nao e segredo: REQUIRE_API_KEY=false diz o que o gateway
+        # deve fazer, nao qual e a chave.
+        INTERRUPTORES = {"true", "false", "0", "1", "yes", "no", "on", "off"}
+        com_valor = [
+            f"{nome}={valor.strip()}"
+            for nome, valor in suspeitos
+            if valor.strip() and valor.strip().lower() not in INTERRUPTORES
+        ]
+        self.assertEqual(com_valor, [], "campo de segredo preenchido no exemplo: " + ", ".join(com_valor))
+
+
+if __name__ == "__main__":
+    unittest.main()

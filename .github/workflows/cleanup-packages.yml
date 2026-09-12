@@ -1,0 +1,87 @@
+name: Package Retention
+
+# Mantem o registro enxuto sem nunca derrubar o que esta em uso.
+#
+# Historico: a primeira versao deste arquivo nao era limpeza. Com
+# min-versions-to-keep: 0 e delete-only-untagged-versions: false ela apagava
+# TODAS as versoes e em seguida removia o proprio package via API. Quem
+# estivesse puxando ghcr.io/pathbit/litellmrtksyncatest ficava sem imagem.
+#
+# A segunda versao corrigia isso, mas usava actions/delete-package-versions,
+# que trata cada manifesto como uma versao independente. O build e multi-arch
+# (linux/amd64 + linux/arm64): o buildx publica um manifest list com a tag e um
+# manifesto SEM TAG por plataforma. Descartar "versoes sem tag" apaga
+# justamente as camadas que a tag referencia, e o pull passa a falhar com
+# "manifest unknown" mesmo com a tag intacta no registro.
+#
+# Por isso a limpeza aqui usa uma action que resolve o manifest list antes de
+# apagar: um manifesto sem tag so e descartado se nenhuma tag preservada
+# apontar para ele.
+
+on:
+  workflow_dispatch:
+    inputs:
+      keep:
+        description: "Quantas versoes marcadas manter"
+        required: false
+        default: "3"
+      dry-run:
+        description: "Simular: lista o que seria apagado sem apagar"
+        required: false
+        default: "false"
+  schedule:
+    # Semanal, domingo 04:00 UTC: o acumulo vem dos builds, nao do relogio.
+    - cron: "0 4 * * 0"
+  workflow_run:
+    workflows: ["Release and Docker Package"]
+    types: [completed]
+
+permissions:
+  packages: write
+
+concurrency:
+  group: package-retention-litellmrtksync
+  cancel-in-progress: false
+
+jobs:
+  retention:
+    name: Apply retention policy
+    runs-on: ubuntu-latest
+    # Depois de um release, so faz sentido limpar se o release funcionou.
+    if: >-
+      github.event_name != 'workflow_run' ||
+      github.event.workflow_run.conclusion == 'success'
+    steps:
+      - name: Apply retention policy
+        uses: dataaxiom/ghcr-cleanup-action@v1.2.2
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+          owner: ${{ github.repository_owner }}
+          packages: litellmrtksync
+          # Guarda as N imagens marcadas mais recentes, com as camadas de
+          # plataforma de cada uma. 'latest' fica de fora da contagem por
+          # seguranca, ainda que por construcao ela aponte para a mais nova.
+          keep-n-tagged: ${{ github.event.inputs.keep || '3' }}
+          exclude-tags: latest
+          # Apaga apenas manifestos orfaos de verdade: os que sobraram de
+          # builds ja aposentados e nao pertencem a nenhuma tag preservada.
+          delete-untagged: true
+          # Restos de execucoes anteriores: manifest list cujas camadas de
+          # plataforma ja nao existem (nao ha o que puxar delas).
+          delete-ghost-images: true
+          delete-partial-images: true
+          delete-orphaned-images: true
+          # Confere no registro se cada digest referenciado existe mesmo, e
+          # registra o resultado no log da execucao.
+          validate: true
+          dry-run: ${{ github.event.inputs.dry-run || 'false' }}
+
+      - name: Report what survived
+        if: always()
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          echo "### Versoes mantidas em litellmrtksync" >> "$GITHUB_STEP_SUMMARY"
+          gh api "/orgs/${{ github.repository_owner }}/packages/container/litellmrtksync/versions" \
+            --jq '.[] | "- \(.name[0:19])  tags: \(.metadata.container.tags | join(", "))"' \
+            >> "$GITHUB_STEP_SUMMARY" || echo "- (nao foi possivel listar)" >> "$GITHUB_STEP_SUMMARY"

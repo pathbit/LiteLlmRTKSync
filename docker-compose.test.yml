@@ -1,0 +1,84 @@
+# Stack de teste: LiteLLM real + Postgres + este sincronizador.
+#
+# Nome de projeto e portas próprios para conviver com qualquer outra stack na
+# mesma máquina. Tudo preso em 127.0.0.1: o proxy administra chaves, e o painel
+# lê estado administrativo — nada disso vai para a rede.
+#
+#   docker compose -f docker-compose.test.yml up -d
+#   docker compose -f docker-compose.test.yml down -v
+
+name: litellm-rtksync-test
+
+services:
+  postgres:
+    image: postgres:16-alpine
+    container_name: litellm-test-db
+    restart: unless-stopped
+    environment:
+      - POSTGRES_USER=litellm
+      - POSTGRES_PASSWORD=${POSTGRES_PASSWORD:?defina POSTGRES_PASSWORD no .env}
+      - POSTGRES_DB=litellm
+    # Sem publicar porta: só o proxy precisa alcançar o banco.
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U litellm -d litellm"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+
+  litellm:
+    image: ghcr.io/berriai/litellm:main-latest
+    container_name: litellm-test-proxy
+    restart: unless-stopped
+    ports:
+      - "127.0.0.1:14000:4000"
+    environment:
+      - DATABASE_URL=postgresql://litellm:${POSTGRES_PASSWORD:?defina POSTGRES_PASSWORD no .env}@postgres:5432/litellm
+      - LITELLM_MASTER_KEY=${LITELLM_MASTER_KEY:?defina LITELLM_MASTER_KEY no .env}
+      - LITELLM_SALT_KEY=${LITELLM_SALT_KEY:?defina LITELLM_SALT_KEY no .env}
+      - STORE_MODEL_IN_DB=True
+    depends_on:
+      postgres:
+        condition: service_healthy
+    healthcheck:
+      test:
+        - CMD-SHELL
+        - >-
+          python -c "import urllib.request,sys; sys.exit(0 if urllib.request.urlopen('http://127.0.0.1:4000/health/liveliness',timeout=3).status==200 else 1)"
+      interval: 10s
+      timeout: 5s
+      retries: 30
+      # As migrações do Prisma rodam no primeiro boot e levam um tempo.
+      start_period: 90s
+
+  litellmrtksync:
+    build: .
+    image: ghcr.io/pathbit/litellmrtksync:local
+    container_name: litellm-rtksync
+    restart: unless-stopped
+    ports:
+      # Porta interna 9090, igual nos três sincronizadores; publicada em 9093.
+      - "127.0.0.1:9093:9090"
+    environment:
+      - LITELLM_URL=http://litellm:4000
+      - LITELLM_MASTER_KEY=${LITELLM_MASTER_KEY:?defina LITELLM_MASTER_KEY no .env}
+      - DATA_DIR=/app/data
+      - WEB_PORT=9090
+      - SYNC_INTERVAL=${SYNC_INTERVAL:-300}
+      - REFRESH_MARGIN=${REFRESH_MARGIN:-900}
+      - LOG_DIR=/app/data/logs
+      - LOG_RETENTION_DAYS=30
+      - LOG_LEVEL=INFO
+    volumes:
+      - litellmrtksync_data:/app/data
+    depends_on:
+      litellm:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "/opt/venv/bin/python3", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:9090/healthz', timeout=3)"]
+      interval: 15s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
+
+volumes:
+  litellmrtksync_data:

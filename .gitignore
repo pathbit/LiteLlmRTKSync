@@ -216,3 +216,17 @@ __marimo__/
 
 # Streamlit
 .streamlit/secrets.toml
+
+# --- Artefatos de execucao do RTKSync (acrescentado ao final) ---
+# Banco e log sao estado de execucao, nunca fonte.
+*.sqlite
+*.sqlite3
+*.sqlite-journal
+*.sqlite-wal
+*.sqlite-shm
+.dashboard_recovery
+.dashboard_auth.json
+*.log
+logs/
+# Clone do upstream para leitura.
+tmp/
