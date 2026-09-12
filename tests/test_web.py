@@ -84,9 +84,13 @@ class TestPainel(unittest.TestCase):
 
     @classmethod
     def tearDownClass(cls):
+        agendador = getattr(cls.servidor, "cron_scheduler", None)
+        if agendador is not None:
+            agendador.stop()
         cls.servidor.shutdown()
         cls.servidor.server_close()
         LiteLlmDashboardHandler.last_cycle = {}
+        LiteLlmDashboardHandler.cron_scheduler = None
         cls.tmp.cleanup()
 
     # -- auxiliares ---------------------------------------------------------
@@ -158,7 +162,8 @@ class TestPainel(unittest.TestCase):
     def test_every_response_carries_the_security_headers(self):
         for caminho, autenticado in (("/", True), ("/", False),
                                      ("/credenciais-atualizadas", False),
-                                     ("/api/status", True), ("/healthz", False)):
+                                     ("/api/status", True), ("/api/cron-status", True),
+                                     ("/healthz", False)):
             with self.subTest(caminho=caminho, autenticado=autenticado):
                 _, _, cabecalhos = self.pega(caminho, autenticado=autenticado)
                 for nome in self.OBRIGATORIOS:
@@ -239,6 +244,59 @@ class TestPainel(unittest.TestCase):
         self.assertIn("bootstrap-icons", corpo)
         emojis = re.findall(r"[\U0001F300-\U0001FAFF\U00002600-\U000027BF]", corpo)
         self.assertEqual(emojis, [], f"emojis na página: {emojis}")
+
+    # -- ações do agendador -------------------------------------------------
+
+    MESMA_ORIGEM = {"Origin": BASE, "Sec-Fetch-Site": "same-origin"}
+
+    def test_the_panel_serves_the_same_five_actions_as_its_siblings(self):
+        """Uma ação que some da tela não quebra nada — só deixa de existir."""
+        _, corpo, _ = self.pega("/")
+        for acao in ("/acoes/atualizar", "/acoes/idioma", "/acoes/testar-gateway",
+                     "/acoes/sincronizar", "/acoes/cron"):
+            self.assertIn(f'action="{acao}"', corpo, f"{acao} não está na página")
+
+    def test_running_a_cycle_now_answers_with_a_notice(self):
+        status, destino = self.posta("/acoes/sincronizar", cabecalhos=self.MESMA_ORIGEM)
+        self.assertEqual(status, 303)
+        self.assertIn("tom=success", destino)
+        self.assertIn("aviso=", destino)
+
+    def test_triggering_the_scheduler_answers_with_a_notice(self):
+        status, destino = self.posta("/acoes/cron", cabecalhos=self.MESMA_ORIGEM)
+        self.assertEqual(status, 303)
+        self.assertIn("tom=success", destino)
+        self.assertIn("aviso=", destino)
+
+    def test_refreshing_only_reloads_and_does_not_claim_a_cycle_ran(self):
+        """`/acoes/atualizar` recarrega a tela; quem inspeciona é `/acoes/sincronizar`."""
+        status, destino = self.posta("/acoes/atualizar", cabecalhos=self.MESMA_ORIGEM)
+        self.assertEqual(status, 303)
+        self.assertIn("tom=info", destino)
+
+    def test_the_scheduler_history_records_the_runs(self):
+        import json
+
+        self.posta("/acoes/cron", cabecalhos=self.MESMA_ORIGEM)
+        _, corpo, _ = self.pega("/api/cron-status")
+        estado = json.loads(corpo)
+        self.assertGreaterEqual(estado["totalRuns"], 1)
+        self.assertGreaterEqual(len(estado["history"]), 1)
+        # O ciclo do painel inspeciona 2 chaves e 1 modelo do proxy de mentira.
+        self.assertEqual(estado["history"][0]["totalInspected"], 3)
+        # E encontra a incoerência de limite que o ClienteFalso planta.
+        self.assertGreaterEqual(estado["history"][0]["findingsCount"], 1)
+
+    def test_the_scheduler_status_never_carries_a_key(self):
+        self.posta("/acoes/cron", cabecalhos=self.MESMA_ORIGEM)
+        _, corpo, _ = self.pega("/api/cron-status")
+        self.assertNotIn(TOKEN_SECRETO, corpo)
+        self.assertIsNone(re.search(r"sk-[A-Za-z0-9_-]{20}", corpo))
+
+    def test_the_history_modal_is_on_the_page(self):
+        _, corpo, _ = self.pega("/")
+        self.assertIn('id="modalHistorico"', corpo)
+        self.assertIn('data-bs-target="#modalHistorico"', corpo)
 
     # -- conteúdo -----------------------------------------------------------
 

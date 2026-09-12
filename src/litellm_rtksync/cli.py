@@ -80,23 +80,40 @@ def rodar_daemon(settings: Settings) -> None:
     print("=" * 70, flush=True)
     print("[*] LITELLMRTKSYNC · LITELLM VIRTUAL KEY & LIMIT SYNCHRONIZER", flush=True)
     print(f"   Proxy:     {settings.litellm_url}", flush=True)
-    print(f"   Intervalo: {settings.sync_interval}s · Margem: {settings.refresh_margin}s", flush=True)
+    # Os dois intervalos aparecem porque quem conduz o ciclo muda: com o painel
+    # de pé e CRON_ENABLED=1, a cadência real é a do agendador.
+    print(f"   Intervalo: {settings.sync_interval}s · Cron: {settings.cron_interval}s "
+          f"· Margem: {settings.refresh_margin}s", flush=True)
     print("=" * 70, flush=True)
 
     servidor = None
+    agendador = None
+    # Com o painel de pé, o ciclo passa pela memória que a tela lê; sem ele, o
+    # motor basta. A tela mostrando um resultado antigo enquanto o serviço
+    # trabalha é indistinguível de um serviço parado.
+    ciclo = motor.sync_all
     if settings.enable_web:
         from .web import start_web
 
         servidor = start_web(settings, motor)
+        agendador = getattr(servidor, "cron_scheduler", None)
+        ciclo = getattr(servidor, "execute_cycle", None) or motor.sync_all
 
     try:
         while rodando:
-            motor.sync_all()
+            # Quando o agendador do painel está conduzindo os ciclos, este laço
+            # só espera o sinal de parada: os dois rodando ao mesmo tempo fariam
+            # duas inspeções independentes do mesmo proxy, cada uma no seu
+            # relógio, dobrando a carga sem dobrar a informação.
+            if agendador is None or not agendador.is_running:
+                ciclo()
             for _ in range(settings.sync_interval):
                 if not rodando:
                     break
                 time.sleep(1)
     finally:
+        if agendador is not None:
+            agendador.stop()
         if servidor is not None:
             servidor.shutdown()
             servidor.server_close()

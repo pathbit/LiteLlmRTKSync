@@ -104,7 +104,7 @@ def render_notice_page(title: str, body: str, link_label: str = "") -> bytes:
   <title>{esc(title)}</title>
   <link rel="stylesheet" href="{BOOTSTRAP_CSS}">
   <link rel="stylesheet" href="{BOOTSTRAP_ICONS}">
-  <style>body {{ background: #2b0707; }}</style>
+  <style>body {{ background: #6D0808; }}</style>
 </head>
 <body class="d-flex align-items-center justify-content-center" style="min-height:100vh">
   <div class="card text-center" style="max-width:34rem">
@@ -354,6 +354,116 @@ def render_limits_card(findings: List[Dict[str, Any]], lang: str) -> str:
         </ul>"""
 
 
+def render_cron_history(history: List[Dict[str, Any]], lang: str) -> str:
+    """Lista de execuções do agendador, cada uma com o log do que aconteceu.
+
+    O contador sozinho não distingue "nada a relatar" de "a inspeção falhou".
+    O log de cada ciclo é o que responde a essa pergunta sem obrigar ninguém a
+    abrir o arquivo de log do serviço.
+    """
+    if not history:
+        return f'<p class="text-secondary small mb-0">{esc(translate("cron.no_runs", lang))}</p>'
+
+    items = []
+    for index, entry in enumerate(history):
+        failed = not entry.get("success", True) or entry.get("error")
+        tone = "danger" if failed else "secondary"
+        icon = "bi-exclamation-octagon-fill" if failed else "bi-check-circle"
+        log_lines = entry.get("log") or []
+        if entry.get("error") and not any(str(entry["error"]) in line for line in log_lines):
+            log_lines = [f"ERRO: {entry['error']}", *log_lines]
+
+        body = (
+            "<pre class=\"cron-log mb-0\">" + esc("\n".join(log_lines)) + "</pre>"
+            if log_lines
+            else f'<p class="text-secondary small mb-0">{esc(translate("cron.no_runs", lang))}</p>'
+        )
+
+        items.append(f"""
+          <div class="accordion-item">
+            <h3 class="accordion-header">
+              <button class="accordion-button collapsed py-2" type="button"
+                      data-bs-toggle="collapse" data-bs-target="#ciclo{index}"
+                      aria-expanded="false" aria-controls="ciclo{index}">
+                <span class="d-flex align-items-center gap-2 w-100 pe-3">
+                  <i class="bi {icon} text-{tone}" aria-hidden="true"></i>
+                  <span class="font-monospace small">{esc(format_timestamp(entry.get("timestamp")))}</span>
+                  <span class="ms-auto small text-secondary">
+                    {esc(translate("cron.result_line", lang,
+                                   inspected=entry.get("totalInspected", 0),
+                                   findings=entry.get("findingsCount", 0),
+                                   duration=entry.get("durationMs", 0)))}
+                  </span>
+                </span>
+              </button>
+            </h3>
+            <div id="ciclo{index}" class="accordion-collapse collapse">
+              <div class="accordion-body py-2">{body}</div>
+            </div>
+          </div>""")
+
+    return f'<div class="accordion accordion-flush" id="historicoCron">{"".join(items)}</div>'
+
+
+def render_cron_card(cron: Dict[str, Any], lang: str) -> str:
+    """Cartão do agendador, no vocabulário deste sincronizador.
+
+    Onde os irmãos contam tokens renovados, aqui se conta o que a inspeção
+    encontrou: o ciclo daqui é somente leitura, e um rótulo de renovação
+    prometeria uma correção que ninguém aplicou.
+    """
+    active = bool(cron.get("active"))
+    state_icon = "bi-broadcast text-success" if active else "bi-pause-circle text-secondary"
+    state_text = (
+        translate("cron.active", lang, interval=cron.get("intervalSeconds", "—"))
+        if active
+        else translate("cron.disabled", lang)
+    )
+    last = cron.get("lastResult") or {}
+    failed = bool(last) and (not last.get("success", True) or last.get("error"))
+
+    return f"""
+      <div class="card h-100">
+        <div class="card-header d-flex align-items-center justify-content-between">
+          <span class="d-inline-flex align-items-center gap-2">
+            <i class="bi bi-alarm" aria-hidden="true"></i>{esc(translate("cron.title", lang))}
+          </span>
+          <div class="d-flex gap-2">
+            <button class="btn btn-outline-light btn-sm" type="button"
+                    data-bs-toggle="modal" data-bs-target="#modalHistorico">
+              <i class="bi bi-list-columns-reverse me-1" aria-hidden="true"></i>Logs
+              {'<span class="badge text-bg-danger ms-1">!</span>' if failed else ""}
+            </button>
+            <form method="post" action="/acoes/cron" class="m-0">
+              <button class="btn btn-success btn-sm" type="submit">
+                <i class="bi bi-play-fill me-1" aria-hidden="true"></i>{esc(translate("action.run_now", lang))}
+              </button>
+            </form>
+          </div>
+        </div>
+        <div class="card-body">
+          <p class="d-flex align-items-center gap-2 mb-3">
+            <i class="bi {state_icon}" aria-hidden="true"></i><span>{esc(state_text)}</span>
+          </p>
+          <dl class="row mb-0 small">
+            <dt class="col-6 text-secondary fw-normal">{esc(translate("cron.next_run", lang))}</dt>
+            <dd class="col-6 text-end font-monospace">{esc(format_timestamp(cron.get("nextRunAt")))}</dd>
+            <dt class="col-6 text-secondary fw-normal">{esc(translate("cron.total_findings", lang))}</dt>
+            <dd class="col-6 text-end font-monospace">{esc(cron.get("totalFindings", 0))}</dd>
+            <dt class="col-12 text-secondary fw-normal mt-2">{esc(translate("cron.last_result", lang))}</dt>
+            <dd class="col-12 font-monospace small mb-0 {'text-danger' if failed else ''}">
+              {esc(translate("cron.result_line", lang,
+                             inspected=last.get("totalInspected", 0),
+                             findings=last.get("findingsCount", 0),
+                             duration=last.get("durationMs", 0))
+                   if last else translate("cron.no_runs", lang))}
+              {esc(last.get("error") or "")}
+            </dd>
+          </dl>
+        </div>
+      </div>"""
+
+
 def render_proxy_card(proxy: Dict[str, Any], lang: str) -> str:
     """Cartão de liveness do proxy.
 
@@ -437,6 +547,7 @@ def render_dashboard(
     model_states: Dict[str, str],
     findings: List[Dict[str, Any]],
     counters: Dict[str, Any],
+    cron: Dict[str, Any],
     proxy: Dict[str, Any],
     current_user: str,
     is_default_password: bool,
@@ -483,16 +594,16 @@ def render_dashboard(
        todo. A marca vive no gradiente, que e onde ela precisa estar.
        ------------------------------------------------------------------ */
     :root {{
-      --bg:        #2b0707;   /* fundo da pagina */
-      --surface:   #3d0a0a;   /* cartao */
-      --surface-2: #4d0e0e;   /* cabecalho de cartao, chip */
-      --line:      #6b1616;   /* borda */
-      --accent:    #ffab5e;   /* acao primaria */
-      --accent-2:  #ffc78f;   /* acao secundaria, realce */
-      --brand-a:   #6D0808;   /* marca, inicio do gradiente */
-      --brand-b:   #c2410c;   /* marca, fim do gradiente */
+      --bg:        #6D0808;   /* fundo da pagina */
+      --surface:   #7d1414;   /* cartao */
+      --surface-2: #8c1c1c;   /* cabecalho de cartao, chip */
+      --line:      #a32626;   /* borda */
+      --accent:    #ffce6b;   /* acao primaria */
+      --accent-2:  #ffe0a3;   /* acao secundaria, realce */
+      --brand-a:   #a32626;   /* marca, inicio do gradiente */
+      --brand-b:   #ffce6b;   /* marca, fim do gradiente */
       --text:      #e6e8ee;
-      --text-dim:  #97a0b5;
+      --text-dim:  #e3b9b9;
     }}
     body {{ background: var(--bg); color: var(--text); }}
     .card {{ background: var(--surface); border: 1px solid var(--line); }}
@@ -512,13 +623,17 @@ def render_dashboard(
                    border: 1px solid color-mix(in srgb, var(--brand-b) 45%, transparent);
                    color: #fff; font-size: 1.15rem; }}
     .list-group-item {{ background: var(--surface); color: var(--text); border-color: var(--line); }}
+    .accordion-item, .accordion-button {{ background: var(--surface); color: var(--text); }}
+    .accordion-button:not(.collapsed) {{ background: var(--surface-2); color: #fff; box-shadow: none; }}
+    .cron-log {{ white-space: pre-wrap; word-break: break-word; font-size: .8rem; color: var(--text-dim);
+                 background: var(--bg); border: 1px solid var(--line); border-radius: .35rem; padding: .6rem; }}
     /* O botao primario segue o acento do produto, em vez do azul fixo do
        Bootstrap: senao os tres mudam de fundo e ficam com o mesmo botao, o que
        faz a identidade parecer acidental. */
     .btn-primary {{ --bs-btn-bg: var(--accent); --bs-btn-border-color: var(--accent);
                     --bs-btn-hover-bg: var(--accent-2); --bs-btn-hover-border-color: var(--accent-2);
                     --bs-btn-active-bg: var(--accent-2); --bs-btn-active-border-color: var(--accent-2);
-                    --bs-btn-color: #0b0d12; --bs-btn-hover-color: #0b0d12; --bs-btn-active-color: #0b0d12; }}
+                    --bs-btn-color: var(--bg); --bs-btn-hover-color: var(--bg); --bs-btn-active-color: var(--bg); }}
     a {{ color: var(--accent-2); }}
     a:hover {{ color: var(--accent); }}
     /* Barra de acoes do cabecalho: todos os controles com a MESMA altura. O
@@ -549,13 +664,18 @@ def render_dashboard(
       </div>
       <div class="barra-acoes">
         {render_language_switcher(lang)}
+        <form method="post" action="/acoes/atualizar" class="m-0 d-inline">
+          <button class="btn btn-outline-light btn-sm" type="submit"
+                  title="{esc(translate("action.refresh_title", lang))}">
+            <i class="bi bi-arrow-clockwise me-1" aria-hidden="true"></i>{esc(translate("action.refresh", lang))}
+          </button>
+        </form>
         <button class="btn btn-outline-light btn-sm" data-bs-toggle="modal" data-bs-target="#modalCredenciais">
           <i class="bi bi-key me-1" aria-hidden="true"></i>{esc(translate("action.access", lang))}
         </button>
-        <form method="post" action="/acoes/atualizar" class="m-0">
-          <button class="btn btn-primary btn-sm" type="submit"
-                  title="{esc(translate("action.refresh_title", lang))}">
-            <i class="bi bi-arrow-clockwise me-1" aria-hidden="true"></i>{esc(translate("action.refresh", lang))}
+        <form method="post" action="/acoes/sincronizar" class="m-0">
+          <button class="btn btn-primary btn-sm" type="submit">
+            <i class="bi bi-arrow-repeat me-1" aria-hidden="true"></i>{esc(translate("action.sync_now", lang))}
           </button>
         </form>
       </div>
@@ -566,17 +686,17 @@ def render_dashboard(
 
     <div class="row g-3 mb-4">
       <div class="col-lg-6">{render_proxy_card(proxy, lang)}</div>
-      <div class="col-lg-6">
-        <div class="card h-100">
-          <div class="card-header d-flex align-items-center justify-content-between">
-            <span class="d-inline-flex align-items-center gap-2">
-              <i class="bi bi-sliders" aria-hidden="true"></i>{esc(translate("limits.title", lang))}
-            </span>
-            <span class="badge text-bg-dark">{len(findings)}</span>
-          </div>
-          {render_limits_card(findings, lang)}
-        </div>
+      <div class="col-lg-6">{render_cron_card(cron, lang)}</div>
+    </div>
+
+    <div class="card mb-4">
+      <div class="card-header d-flex align-items-center justify-content-between">
+        <span class="d-inline-flex align-items-center gap-2">
+          <i class="bi bi-sliders" aria-hidden="true"></i>{esc(translate("limits.title", lang))}
+        </span>
+        <span class="badge text-bg-dark">{len(findings)}</span>
       </div>
+      {render_limits_card(findings, lang)}
     </div>
 
     <div class="card mb-4">
@@ -609,6 +729,22 @@ def render_dashboard(
         <span class="font-monospace">{esc(generated_at)}</span>
       </span>
     </footer>
+  </div>
+
+  <div class="modal fade" id="modalHistorico" tabindex="-1" aria-hidden="true">
+    <div class="modal-dialog modal-lg modal-dialog-centered modal-dialog-scrollable">
+      <div class="modal-content">
+        <div class="modal-header">
+          <h2 class="modal-title h6 d-inline-flex align-items-center gap-2">
+            <i class="bi bi-list-columns-reverse" aria-hidden="true"></i>{esc(translate("cron.title", lang))}
+          </h2>
+          <button type="button" class="btn-close" data-bs-dismiss="modal"
+                  aria-label="{esc(translate("action.close", lang))}"></button>
+        </div>
+        <div class="modal-body">{render_cron_history(cron.get("history") or [], lang)}
+        </div>
+      </div>
+    </div>
   </div>
 
   <div class="modal fade" id="modalCredenciais" tabindex="-1" aria-hidden="true">

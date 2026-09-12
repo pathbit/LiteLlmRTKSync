@@ -315,7 +315,8 @@ Dashboard capabilities:
 * Rate-limit coherence report naming the field, both values and the consequence.
 * Proxy liveness card against `/health/liveliness`, with the measured latency and the proxy base URL; the panel's own `/healthz` answers `OK` or `LITELLM_UNREACHABLE`.
 * English, Portuguese and Spanish in the flag selector, stored server-side so the choice survives a browser change.
-* Manual inspection trigger (`POST /acoes/atualizar`), on-demand proxy probe (`POST /acoes/testar-gateway`) and full state as JSON (`GET /api/status`).
+* Background scheduler (`CRON_ENABLED`/`CRON_INTERVAL`) with a per-cycle log of what it found, readable from the panel itself.
+* Manual inspection trigger (`POST /acoes/sincronizar`), scheduler trigger (`POST /acoes/cron`), page reload (`POST /acoes/atualizar`), on-demand proxy probe (`POST /acoes/testar-gateway`) and full state as JSON (`GET /api/status`, `GET /api/cron-status`).
 
 ---
 

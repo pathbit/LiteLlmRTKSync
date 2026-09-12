@@ -26,6 +26,7 @@ from typing import Any, Dict, List
 from urllib.parse import parse_qs, urlencode, urlparse
 
 from .config import Settings
+from .cron import CronScheduler, summarize_cycle
 from .i18n import DEFAULT_LANGUAGE, normalize_language, translate
 from .models import ModelEntry, VirtualKey
 from .prefs import get_preference, set_preference
@@ -40,6 +41,7 @@ def strip_markup(text: str) -> str:
 class LiteLlmDashboardHandler(BaseHTTPRequestHandler):
     settings: Settings = None
     engine: Any = None
+    cron_scheduler: Any = None
     last_cycle: Dict[str, Any] = {}
     _lock = threading.Lock()
 
@@ -190,6 +192,8 @@ class LiteLlmDashboardHandler(BaseHTTPRequestHandler):
             self.serve_dashboard(parse_qs(urlparse(self.path).query))
         elif path == "/api/status":
             self.serve_status_json()
+        elif path == "/api/cron-status":
+            self.serve_cron_status_json()
         else:
             self.send_error(HTTPStatus.NOT_FOUND, "Rota inexistente")
 
@@ -211,8 +215,14 @@ class LiteLlmDashboardHandler(BaseHTTPRequestHandler):
         fields = parse_qs(body.decode("utf-8", errors="replace"))
 
         if path == "/acoes/atualizar":
-            self.run_cycle()
-            self.redirect_to_dashboard("success", translate("action.refreshed", self.resolve_language()))
+            # Só recarrega a página, como nos irmãos. Quem roda um ciclo é
+            # "Sincronizar agora": misturar as duas ações num botão só fazia
+            # cada atualização de tela custar uma varredura inteira no proxy.
+            self.redirect_to_dashboard("info", translate("action.refreshed", self.resolve_language()))
+        elif path == "/acoes/sincronizar":
+            self.handle_sync()
+        elif path == "/acoes/cron":
+            self.handle_cron_run()
         elif path == "/acoes/idioma":
             self.handle_language(fields)
         elif path == "/acoes/testar-gateway":
@@ -224,11 +234,63 @@ class LiteLlmDashboardHandler(BaseHTTPRequestHandler):
 
     # -- ações --------------------------------------------------------------
 
-    def run_cycle(self) -> Dict[str, Any]:
-        with LiteLlmDashboardHandler._lock:
-            result = self.engine.sync_all() if self.engine else {}
-            LiteLlmDashboardHandler.last_cycle = result
+    @classmethod
+    def execute_cycle(cls) -> Dict[str, Any]:
+        """Roda um ciclo e guarda o resultado como o último estado conhecido.
+
+        É esta função — e não `engine.sync_all` — que o agendador recebe como
+        callback: o ciclo do cron precisa alimentar a mesma memória que a tela
+        lê, senão o agendador trabalha e a página continua mostrando o resultado
+        do primeiro ciclo para sempre.
+        """
+        with cls._lock:
+            result = cls.engine.sync_all() if cls.engine else {}
+            cls.last_cycle = result
             return result
+
+    def run_cycle(self) -> Dict[str, Any]:
+        return LiteLlmDashboardHandler.execute_cycle()
+
+    def handle_sync(self) -> None:
+        """Executa um ciclo agora, a pedido de quem está na tela."""
+        lang = self.resolve_language()
+        try:
+            result = self.run_cycle() or {}
+        except Exception as e:
+            # O painel continua de pé mesmo com o proxy fora: o operador precisa
+            # ver o motivo na tela, não um 500 do navegador.
+            self.redirect_to_dashboard("danger", translate("cron.failed", lang, error=e))
+            return
+
+        # A conversão do resumo para "inspecionados/achados" mora no cron: dois
+        # lugares contando a mesma coisa acabariam discordando um do outro.
+        inspected, findings, _ = summarize_cycle(result)
+        self.redirect_to_dashboard(
+            "success" if result.get("success", True) else "warning",
+            translate("action.synced", lang, inspected=inspected, findings=findings),
+        )
+
+    def handle_cron_run(self) -> None:
+        """Dispara o agendador agora, registrando a execução no histórico dele."""
+        lang = self.resolve_language()
+        if not self.cron_scheduler:
+            self.redirect_to_dashboard("warning", translate("cron.unavailable", lang))
+            return
+        try:
+            entry = self.cron_scheduler.trigger_now() or {}
+        except Exception as e:
+            self.redirect_to_dashboard("danger", translate("cron.failed", lang, error=e))
+            return
+        self.redirect_to_dashboard(
+            "success" if entry.get("success", True) else "warning",
+            translate(
+                "action.cron_ran",
+                lang,
+                duration=entry.get("durationMs", 0),
+                inspected=entry.get("totalInspected", 0),
+                findings=entry.get("findingsCount", 0),
+            ),
+        )
 
     def handle_language(self, fields: Dict[str, List[str]]) -> None:
         chosen = normalize_language((fields.get("lang", [""])[0] or "").strip())
@@ -327,6 +389,17 @@ class LiteLlmDashboardHandler(BaseHTTPRequestHandler):
         self.end_headers()
         self.write_body(payload)
 
+    def serve_cron_status_json(self) -> None:
+        """Estado do agendador. O histórico só traz contagens e ações, nunca credencial."""
+        cron = self.cron_scheduler.get_status() if self.cron_scheduler else {"active": False}
+        payload = json.dumps(cron, ensure_ascii=False).encode("utf-8")
+        self.send_response(HTTPStatus.OK)
+        self.send_header("Content-Type", "application/json; charset=utf-8")
+        self.send_header("Cache-Control", "no-store")
+        self.send_header("Content-Length", str(len(payload)))
+        self.end_headers()
+        self.write_body(payload)
+
     # -- renderização -------------------------------------------------------
 
     def probe_proxy(self):
@@ -383,6 +456,7 @@ class LiteLlmDashboardHandler(BaseHTTPRequestHandler):
             "model_states": model_states,
             "findings": [d for d in details if d.get("kind") == "limit"],
             "counters": state,
+            "cron": self.cron_scheduler.get_status() if self.cron_scheduler else {"active": False},
             "proxy": {"url": base_url, "online": online, "latencyMs": latency_ms},
         }
 
@@ -408,6 +482,7 @@ class LiteLlmDashboardHandler(BaseHTTPRequestHandler):
             model_states=state["model_states"],
             findings=state["findings"],
             counters=state["counters"],
+            cron=state["cron"],
             proxy=state["proxy"],
             current_user=current_user,
             is_default_password=is_default,
@@ -420,11 +495,36 @@ class LiteLlmDashboardHandler(BaseHTTPRequestHandler):
 
 
 def start_web(settings: Settings, engine: Any) -> ThreadingHTTPServer:
-    """Sobe o painel em uma thread própria e devolve o servidor."""
+    """Sobe o painel em uma thread própria e devolve o servidor.
+
+    O agendador é criado sempre, mesmo com `CRON_ENABLED=0`: só assim o botão
+    "Executar agora" continua funcionando e o histórico existe para ser lido.
+    O que a flag controla é o laço automático, não a existência do agendador.
+    """
     LiteLlmDashboardHandler.settings = settings
     LiteLlmDashboardHandler.engine = engine
+
+    scheduler = CronScheduler(
+        sync_callback=LiteLlmDashboardHandler.execute_cycle,
+        interval_seconds=settings.cron_interval,
+        name="LiteLlmRTKSync-CronScheduler",
+    )
+    LiteLlmDashboardHandler.cron_scheduler = scheduler
+
     server = ThreadingHTTPServer((settings.web_host, settings.web_port), LiteLlmDashboardHandler)
+    # Pendurado no servidor para que quem o desligar (CLI, teste) também consiga
+    # parar o agendador: são o mesmo ciclo de vida.
+    server.cron_scheduler = scheduler
+    # E o ciclo do painel fica alcançável de fora: com o agendador desligado
+    # (`CRON_ENABLED=0`) quem roda os ciclos é o laço do CLI, e chamar
+    # `engine.sync_all` direto de lá deixaria a tela presa no primeiro resultado.
+    server.execute_cycle = LiteLlmDashboardHandler.execute_cycle
     server.daemon_threads = True
     thread = threading.Thread(target=server.serve_forever, daemon=True)
     thread.start()
+
+    # Depois do bind: com a porta ocupada, `start_web` levanta e ninguém
+    # ficaria com um agendador órfão inspecionando o proxy em segundo plano.
+    if settings.cron_enabled:
+        scheduler.start()
     return server

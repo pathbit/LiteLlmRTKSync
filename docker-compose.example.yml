@@ -9,12 +9,15 @@ name: litellmrtksync-stack
 #   docker compose -f docker-compose.example.yml up -d
 
 services:
-  postgres:
+  litellmrtk-db:
     # O LiteLLM guarda chaves virtuais, times e orcamentos em Postgres via
     # Prisma. Nao ha modo sem banco: sem ele o proxy sobe sem API administrativa,
     # e e justamente a API administrativa que este sincronizador le.
     image: postgres:16-alpine
     container_name: litellmrtk-db
+    hostname: litellmrtk-db
+    networks:
+      - litellmrtksync-net
     restart: unless-stopped
     environment:
       - POSTGRES_USER=litellm
@@ -30,9 +33,12 @@ services:
       timeout: 5s
       retries: 20
 
-  litellm:
+  litellmrtk-router:
     image: ghcr.io/berriai/litellm:main-stable
     container_name: litellmrtk-router
+    hostname: litellmrtk-router
+    networks:
+      - litellmrtksync-net
     restart: unless-stopped
     ports:
       # Porta interna 4000 (padrao do LiteLLM); publicada em 8083 no host.
@@ -41,7 +47,7 @@ services:
       # stack do artigo, que fica com a 20128.
       - "127.0.0.1:8083:4000"
     environment:
-      - DATABASE_URL=postgresql://litellm:${POSTGRES_PASSWORD:?defina POSTGRES_PASSWORD no .env}@postgres:5432/litellm
+      - DATABASE_URL=postgresql://litellm:${POSTGRES_PASSWORD:?defina POSTGRES_PASSWORD no .env}@litellmrtk-db:5432/litellm
       - LITELLM_MASTER_KEY=${LITELLM_MASTER_KEY:?defina LITELLM_MASTER_KEY no .env}
       - LITELLM_SALT_KEY=${LITELLM_SALT_KEY:?defina LITELLM_SALT_KEY no .env (openssl rand -hex 32)}
       - STORE_MODEL_IN_DB=True
@@ -51,7 +57,7 @@ services:
       - UI_USERNAME=${DASHBOARD_USER:-admin}
       - UI_PASSWORD=${DASHBOARD_PASSWORD:?defina DASHBOARD_PASSWORD no .env}
     depends_on:
-      postgres:
+      litellmrtk-db:
         condition: service_healthy
     healthcheck:
       # Esperar o proxy ficar saudavel, e nao apenas iniciado: o LiteLLM roda as
@@ -66,9 +72,12 @@ services:
       retries: 20
       start_period: 60s
 
-  litellmrtksync:
+  litellmrtk-sync:
     image: ghcr.io/pathbit/litellmrtksync:latest
     container_name: litellmrtk-sync
+    hostname: litellmrtk-sync
+    networks:
+      - litellmrtksync-net
     restart: unless-stopped
     ports:
       # Porta interna 9090, igual nos tres sincronizadores; publicada em 9093 no
@@ -78,7 +87,7 @@ services:
     volumes:
       - litellmrtksync_data:/app/data
     environment:
-      - LITELLM_URL=http://litellm:4000
+      - LITELLM_URL=http://litellmrtk-router:4000
       - LITELLM_MASTER_KEY=${LITELLM_MASTER_KEY:?defina LITELLM_MASTER_KEY no .env}
       - DATA_DIR=/app/data
       - SYNC_INTERVAL=${SYNC_INTERVAL:-300}
@@ -101,7 +110,7 @@ services:
       - LOG_RETENTION_DAYS=${LOG_RETENTION_DAYS:-30}
       - LOG_LEVEL=${LOG_LEVEL:-INFO}
     depends_on:
-      litellm:
+      litellmrtk-router:
         condition: service_healthy
     healthcheck:
       test: ["CMD", "/opt/venv/bin/python3", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:9090/healthz', timeout=3)"]
@@ -113,3 +122,10 @@ services:
 volumes:
   litellmrtksync_db:
   litellmrtksync_data:
+
+networks:
+  litellmrtksync-net:
+    name: litellmrtksync-net
+    # Rede propria da stack. Na rede default, duas stacks no mesmo
+    # daemon resolvem o mesmo nome curto e nao da para saber a qual
+    # gateway o sincronizador se conectou.

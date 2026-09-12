@@ -34,6 +34,13 @@ which.
 **Proxy liveness.** A card against `/health/liveliness`, so "the panel is up" and "the proxy is
 up" are never confused for each other.
 
+**Inspection scheduler.** Shows the next run, how many findings have accumulated and the result
+of the last cycle. The **Logs** button opens the history: one entry per cycle, each with the
+actions that cycle produced — a limit above its ceiling, a provider key refused, a route that
+could not be read. Without it, a counter reading zero cannot be told apart from a cycle that
+failed. `CRON_ENABLED=0` stops the automatic loop; the **Run now** button and the history keep
+working.
+
 ---
 
 ## Routes
@@ -43,7 +50,10 @@ up" are never confused for each other.
 | `/healthz` | GET | Unauthenticated liveness probe. `OK` or `LITELLM_UNREACHABLE` |
 | `/` | GET | The panel |
 | `/api/status` | GET | Full state as JSON |
-| `/acoes/atualizar` | POST | Run an inspection cycle now |
+| `/api/cron-status` | GET | Scheduler state and run history as JSON |
+| `/acoes/atualizar` | POST | Reload the page from the last known state |
+| `/acoes/sincronizar` | POST | Run an inspection cycle now |
+| `/acoes/cron` | POST | Trigger the scheduler's cycle now |
 | `/acoes/testar-gateway` | POST | Probe the proxy's liveness right now |
 | `/acoes/idioma` | POST | Store the interface language |
 | `/acoes/credenciais` | POST | Change the panel password |

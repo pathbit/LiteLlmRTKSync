@@ -15,21 +15,21 @@
 #   tools/testa_saida_de_rede.sh
 #
 # Variaveis (todas com padrao):
-#   ECHO_URL    destino visto de dentro da rede de teste  (172.31.0.20:8080)
-#   PROXY_A     proxy A, do host                          (127.0.0.1:18081)
-#   PROXY_B     proxy B, do host                          (127.0.0.1:18082)
-#   IP_HOST     o que o destino ve numa saida direta      (172.31.0.1)
-#   IP_PROXY_A / IP_PROXY_B   enderecos dos proxies       (172.31.0.11/.12)
+#   ECHO_URL    destino visto de dentro da rede de teste  (172.33.0.20:8080)
+#   PROXY_A     proxy A, do host                          (127.0.0.1:18101)
+#   PROXY_B     proxy B, do host                          (127.0.0.1:18102)
+#   IP_HOST     o que o destino ve numa saida direta      (172.33.0.1)
+#   IP_PROXY_A / IP_PROXY_B   enderecos dos proxies       (172.33.0.11/.12)
 
 set -uo pipefail
 
-ECHO_URL="${ECHO_URL:-http://172.31.0.20:8080}"
-ECHO_HOST="${ECHO_HOST:-http://127.0.0.1:18080}"
-PROXY_A="${PROXY_A:-http://127.0.0.1:18081}"
-PROXY_B="${PROXY_B:-http://127.0.0.1:18082}"
-IP_HOST="${IP_HOST:-172.31.0.1}"
-IP_PROXY_A="${IP_PROXY_A:-172.31.0.11}"
-IP_PROXY_B="${IP_PROXY_B:-172.31.0.12}"
+ECHO_URL="${ECHO_URL:-http://172.33.0.20:8080}"
+ECHO_HOST="${ECHO_HOST:-http://127.0.0.1:18100}"
+PROXY_A="${PROXY_A:-http://127.0.0.1:18101}"
+PROXY_B="${PROXY_B:-http://127.0.0.1:18102}"
+IP_HOST="${IP_HOST:-172.33.0.1}"
+IP_PROXY_A="${IP_PROXY_A:-172.33.0.11}"
+IP_PROXY_B="${IP_PROXY_B:-172.33.0.12}"
 
 TOTAL=0
 FALHAS=0
