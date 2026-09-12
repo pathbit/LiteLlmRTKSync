@@ -1,0 +1,40 @@
+name: CI
+
+on:
+  push:
+    branches: ["master"]
+  pull_request:
+    branches: ["master"]
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        python-version: ["3.11", "3.12", "3.13", "3.14"]
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python ${{ matrix.python-version }}
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python-version }}
+
+      - name: Create and activate virtual environment
+        run: |
+          python3 -m venv .venv
+          echo "$GITHUB_WORKSPACE/.venv/bin" >> $GITHUB_PATH
+
+      - name: Run unit test suite
+        run: |
+          PYTHONPATH=src python3 -m unittest discover -s tests -p "test_*.py"
+
+      - name: Test package install
+        run: |
+          pip install --upgrade pip
+          pip install .
+
+          litellmrtksync --help

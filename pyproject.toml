@@ -1,0 +1,34 @@
+[build-system]
+requires = ["setuptools>=61.0"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "LiteLlmRTKSync"
+version = "1.0.0"
+description = "LiteLLM virtual key, credential and rate-limit synchronizer"
+readme = "README.md"
+authors = [
+    { name = "Eliel Sousa", email = "eliel@pathbit.co" }
+]
+license = { text = "MIT" }
+requires-python = ">=3.10"
+keywords = ["litellm", "llm-proxy", "virtual-keys", "rate-limit", "credential-check"]
+classifiers = [
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.14",
+    "License :: OSI Approved :: MIT License",
+    "Operating System :: OS Independent",
+    "Topic :: Utilities",
+]
+
+[project.urls]
+Homepage = "https://github.com/pathbit/LiteLlmRTKSync"
+Repository = "https://github.com/pathbit/LiteLlmRTKSync"
+Issues = "https://github.com/pathbit/LiteLlmRTKSync/issues"
+
+[project.scripts]
+litellmrtksync = "litellm_rtksync.cli:main"
+litellm-rtksync = "litellm_rtksync.cli:main"
+
+[tool.setuptools.packages.find]
+where = ["src"]
