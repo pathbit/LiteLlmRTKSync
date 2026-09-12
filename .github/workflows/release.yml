@@ -40,7 +40,6 @@ jobs:
           pip install --upgrade pip
           pip install .
           litellmrtksync --help
-          OminiRTKSync --help
 
   build-and-push-docker:
     name: Build and Push Multi-Arch Docker Image (x86_64 and arm64)
