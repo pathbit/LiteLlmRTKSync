@@ -71,7 +71,87 @@ LiteLLM's own screens.
 
 ---
 
+---
+
+## 🔑 Signing in to the dashboard
+
+| | |
+| :--- | :--- |
+| **Address** | `http://localhost:9093` |
+| **User** | `admin` — or whatever you set in `DASHBOARD_USER` |
+| **Password** | the value of `DASHBOARD_PASSWORD` in your `.env` |
+
+There is **no factory password**, and that is deliberate: a fixed password shipped
+in an image is public the moment the image is. You choose it once, in one place:
+
+```bash
+cp .env.example .env
+# edit .env:
+DASHBOARD_USER=admin
+DASHBOARD_PASSWORD=<the password you choose>
+```
+
+Then bring the stack up. That user and that password are what the panel accepts.
+
+### Did not set a password, and now cannot get in?
+
+On first boot with `DASHBOARD_PASSWORD` empty, the container generates a
+**recovery credential** and writes it inside the data directory. Read it:
+
+```bash
+docker exec litellm-rtksync cat /app/data/.dashboard_recovery
+```
+
+Sign in as `admin` with that value, then set a real password on the screen. The
+recovery credential keeps working afterwards — it is break-glass, and one that
+stopped working the moment you set a password would be useless exactly when you
+need it.
+
+> **Português:** o painel pede usuário e senha. O usuário é `admin` (ou o que
+> estiver em `DASHBOARD_USER`) e a senha é a que **você** definir em
+> `DASHBOARD_PASSWORD` no `.env` — não existe senha de fábrica, porque um valor
+> fixo publicado na imagem é uma credencial pública. Se subiu sem definir senha,
+> use o comando acima para ler a credencial de recuperação e entre com ela.
+
 ## Running with Docker
+
+### Configuração: `.env` a partir do exemplo
+
+A configuração inteira vem de variáveis de ambiente, lidas de um `.env` ao lado
+do `docker-compose.yml` — o Compose o encontra sozinho, sem nenhuma flag.
+
+```bash
+make setup      # cria o .env a partir do .env.example, sem sobrescrever um existente
+```
+
+O alvo lista, ao final, exatamente quais variáveis ficaram em branco e precisam
+ser preenchidas. Preencha e suba a stack.
+
+O `.env` **nunca** é versionado, e o `.env.example` não carrega nenhum valor de
+segredo — um valor publicado num arquivo de exemplo é, por definição, uma
+credencial pública. Um teste garante que toda variável exigida por um compose
+existe no exemplo, para que `cp .env.example .env` nunca produza um `.env`
+incompleto.
+
+### Portas, e por que cada uma é diferente
+
+Os três sincronizadores escutam na **mesma porta dentro do container** (`9090`)
+e publicam em portas diferentes no host, para que os três possam rodar lado a
+lado. O mesmo vale para os gateways: cada um tem a sua.
+
+| Serviço | Porta interna | Publicada no host |
+| :--- | :--- | :--- |
+| 9Router | `20128` | `20128` |
+| OmniRoute | `20128` | `20129` |
+| LiteLLM | `4000` | `20130` |
+| 9RTKSync (painel) | `9090` | `9091` |
+| OminiRTkSync (painel) | `9090` | `9092` |
+| LiteLlmRTKSync (painel) | `9090` | `9093` |
+
+Tudo preso a `127.0.0.1`: o gateway carrega credenciais reais e não deve ficar
+acessível na rede local. Para mudar qualquer uma, altere o lado esquerdo do
+mapeamento no compose — o lado direito é a porta interna, que o processo escuta.
+
 
 Official multi-architecture Docker images (`linux/amd64` and `linux/arm64`) are published automatically to the GitHub Container Registry (GHCR):
 
