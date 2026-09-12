@@ -74,6 +74,29 @@ contract; the data layer and what each one checks are what differ.
 
 ---
 
+---
+
+## Signing in to the dashboard
+
+| | |
+| :--- | :--- |
+| **Address** | `http://localhost:9093` |
+| **User** | `admin` — or whatever `DASHBOARD_USER` says |
+| **Password** | the value you set in `DASHBOARD_PASSWORD` |
+
+There is **no factory password**: a fixed one shipped in an image is public the
+moment the image is. Set yours in `.env` before bringing the stack up.
+
+Brought it up without setting one? The container generated a recovery
+credential on first boot — read it and sign in as `admin`, then set a real
+password on the screen:
+
+```bash
+docker exec litellm-rtksync cat /app/data/.dashboard_recovery
+```
+
+Full detail in [Authentication](Authentication).
+
 ## License
 
 MIT — see [LICENSE](https://github.com/pathbit/LiteLlmRTKSync/blob/master/LICENSE).

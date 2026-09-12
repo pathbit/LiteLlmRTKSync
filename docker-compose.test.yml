@@ -30,7 +30,9 @@ services:
     container_name: litellm-test-proxy
     restart: unless-stopped
     ports:
-      - "127.0.0.1:14000:4000"
+      # Porta interna 4000 (padrao do LiteLLM); publicada em 20130 no host,
+      # na mesma faixa dos outros gateways: 20128 9Router, 20129 OmniRoute.
+      - "127.0.0.1:20130:4000"
     environment:
       - DATABASE_URL=postgresql://litellm:${POSTGRES_PASSWORD:?defina POSTGRES_PASSWORD no .env}@postgres:5432/litellm
       - LITELLM_MASTER_KEY=${LITELLM_MASTER_KEY:?defina LITELLM_MASTER_KEY no .env}
@@ -65,6 +67,12 @@ services:
       - WEB_PORT=9090
       - SYNC_INTERVAL=${SYNC_INTERVAL:-300}
       - REFRESH_MARGIN=${REFRESH_MARGIN:-900}
+      # Credencial do painel. Sem estas duas linhas nao havia como definir a
+      # senha pelo .env: a stack subia, o painel respondia 401 e o unico
+      # caminho de entrada era descobrir a credencial de recuperacao dentro do
+      # container -- que e o socorro, nao a porta da frente.
+      - DASHBOARD_USER=${DASHBOARD_USER:-admin}
+      - DASHBOARD_PASSWORD=${DASHBOARD_PASSWORD:-}
       - LOG_DIR=/app/data/logs
       - LOG_RETENTION_DAYS=30
       - LOG_LEVEL=INFO

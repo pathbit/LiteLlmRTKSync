@@ -1,5 +1,23 @@
 .PHONY: venv test run status docker-build docker-run clean
 
+# Cria o .env a partir do .env.example. Nunca sobrescreve um .env existente:
+# ele carrega os seus segredos, e um `make setup` distraido nao pode apaga-los.
+# O docker compose le esse .env sozinho, por estar ao lado do compose.
+setup:
+	@if [ -f .env ]; then \
+		echo ".env ja existe — preservado."; \
+	else \
+		cp .env.example .env; \
+		echo ".env criado a partir de .env.example."; \
+	fi
+	@echo ""
+	@echo "Preencha no .env antes de subir a stack:"
+	@grep -nE '^[A-Z_]+=$$' .env | sed 's/^/   linha /' || echo "   (nada obrigatorio em branco)"
+	@echo ""
+	@echo "O painel usa DASHBOARD_USER e DASHBOARD_PASSWORD. Sem senha definida,"
+	@echo "o primeiro acesso usa a credencial de recuperacao gerada no boot."
+
+
 VENV ?= .venv
 PYTHON ?= $(shell which $(VENV)/bin/python3 2>/dev/null || which python3)
 
