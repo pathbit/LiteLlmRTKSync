@@ -1,10 +1,28 @@
-# LiteLlmRTKSync
+# LiteLlmRTKSync · LiteLLM Universal Token & Connection Synchronizer
 
-**LiteLLM virtual key, credential and rate-limit synchronizer.**
+[![CI](https://github.com/pathbit/LiteLlmRTKSync/actions/workflows/ci.yml/badge.svg)](https://github.com/pathbit/LiteLlmRTKSync/actions/workflows/ci.yml)
+[![Release and Docker Package](https://github.com/pathbit/LiteLlmRTKSync/actions/workflows/release.yml/badge.svg)](https://github.com/pathbit/LiteLlmRTKSync/actions/workflows/release.yml)
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
+[![Python Version](https://img.shields.io/badge/python-3.14.7-blue.svg)](https://www.python.org/ftp/python/3.14.7/python-3.14.7-macos11.pkg)
+[![Docker Package](https://img.shields.io/badge/docker-ghcr.io%2Fpathbit%2Flitellmrtksync-blue)](https://github.com/pathbit/LiteLlmRTKSync/pkgs/container/litellmrtksync)
+
+**`LiteLlmRTKSync`** (*LiteLLM Universal Token & Connection Synchronizer*) is the
+read-only health guardian for [LiteLLM](https://github.com/BerriAI/litellm)
+proxies. It reports virtual keys about to expire, provider keys the catalogue
+still trusts but the provider has revoked, and rate-limit ceilings that
+contradict each other — three states nobody is told about until a request fails.
+
 Third of the RTKSync family, after [9RTKSync](https://github.com/pathbit/9RTKSync)
 (9Router) and [OminiRTkSync](https://github.com/pathbit/OminiRTkSync) (OmniRoute).
 
-*(Versão em português ao final.)*
+## Documentation
+
+The full documentation lives in the [project wiki](../../wiki): installation, the complete
+environment-variable contract, the dashboard, authentication and break-glass recovery,
+persistent logging, architecture, troubleshooting, and rate-limit coherence.
+
+Wiki pages are generated from [`docs/wiki/`](docs/wiki) — edit them there and open a pull
+request; a push to `master` republishes the wiki automatically.
 
 ---
 
@@ -15,69 +33,234 @@ tokens that expire, and nobody notices when one dies until a request fails.
 
 LiteLLM has no consumer OAuth. Its credentials are provider API keys in the
 model catalogue and virtual keys the proxy issues itself, and its state lives in
-Postgres behind Prisma — there is no SQLite file to read. So there is nothing to
-renew here. There are three things nobody checks on their own:
+Postgres behind Prisma — there is no SQLite file to read. **So there is nothing
+to renew here**, and everything this tool does is **read-only**: it reports and
+validates. Changing a limit, a key or a model is the operator's call, through
+LiteLLM's own screens.
 
-1. **A virtual key expires quietly.** `LiteLLM_VerificationToken.expires` passes,
-   and the first sign is a request failing.
-2. **A provider key in the model catalogue can have been revoked.** The proxy
-   only finds out when it tries to use it.
-3. **A key limit above its team's limit is accepted without complaint.**
-   Verified against a real proxy: a team capped at `rpm_limit=60` accepts a key
-   declaring `rpm_limit=600`. The effective limit is always the most restrictive
-   on the path, so the larger number exists only in the record — whoever
-   configured it believes they have 600 and gets 60.
+---
 
-Everything this tool does is **read-only**. It reports and validates; changing a
-limit, a key or a model is the operator's call, through LiteLLM's own screens.
+## Core Features
 
-## What it reads
+* **Virtual Key Expiry Watch**
+  * `LiteLLM_VerificationToken.expires` passes in silence, and the first sign is
+    a request failing. Keys already expired and keys inside the renewal margin
+    are reported separately.
+  * An undeclared expiry is reported as *undeclared*, never as "unlimited".
+* **Live Provider Credential Validation**
+  * A provider key registered in the model catalogue may already have been
+    revoked; the proxy only finds out when it tries to use it. Each key is
+    checked against its own provider instead of being assumed healthy.
+* **Rate-Limit Coherence Enforcement**
+  * One rule, applied field by field across `tpm_limit`, `rpm_limit`,
+    `max_parallel_requests` and `max_budget`: **key ≤ team ≤ platform default**.
+  * Verified against a real proxy: a team capped at `rpm_limit=60` accepts a key
+    declaring `rpm_limit=600` without complaint. The effective limit is always
+    the most restrictive on the path, so the larger number exists only in the
+    record — whoever configured it believes they have 600 and gets 60.
+  * Upstream report: [BerriAI/litellm#40866](https://github.com/BerriAI/litellm/issues/40866).
+* **Administrative API Only, Never the Database**
+  * The Prisma schema changes between releases, and writing to the table would
+    skip the invariants the proxy enforces.
+* **Built-in Web Dashboard**
+  * Lightweight server on port `9090` (published on `9093` in the test stack),
+    rendered entirely server-side, with findings grouped by severity.
+* **Strict Virtual Environment Execution**
+  * All Python execution strictly isolated in dedicated virtual environments both
+    in Docker containers (`/opt/venv`) and in local setups (`.venv`).
 
-Through the administrative API, never the database — the Prisma schema changes
-between releases, and writing to the table would skip the invariants the proxy
-enforces:
+---
 
-| Route | What comes back |
-| --- | --- |
-| `/health/liveliness` | whether the proxy is up |
-| `/key/list` | virtual keys, paginated to the end |
-| `/team/list` | teams and their caps |
-| `/model/info` | registered models and their `litellm_params` |
-| `/credentials` | named credentials, when the version has them |
+## Running with Docker
 
-## Rate-limit coherence
-
-One rule, applied field by field across `tpm_limit`, `rpm_limit`,
-`max_parallel_requests` and `max_budget`:
-
-> **No level may declare a value greater than the level above it.**
-> key ≤ team ≤ platform default.
-
-The platform default comes from `PLATFORM_RPM_LIMIT`, `PLATFORM_TPM_LIMIT` and
-`PLATFORM_MAX_BUDGET`. Leaving them empty is a choice, not an error — the panel
-reports "no cap declared" and moves on.
-
-## Running
+Official multi-architecture Docker images (`linux/amd64` and `linux/arm64`) are published automatically to the GitHub Container Registry (GHCR):
 
 ```bash
-cp .env.example .env     # fill LITELLM_MASTER_KEY and the platform caps
+docker pull ghcr.io/pathbit/litellmrtksync:latest
+```
+
+### Docker Compose Example
+
+Add `litellmrtksync` to your `docker-compose.yml` alongside your LiteLLM proxy:
+
+```yaml
+services:
+  litellm:
+    image: ghcr.io/berriai/litellm:main-stable
+    container_name: litellm
+    restart: unless-stopped
+    ports:
+      - "127.0.0.1:4000:4000"
+    environment:
+      # Sem valor de fallback: um segredo publicado em arquivo de exemplo vira o
+      # segredo real de toda implantacao que so copiou e colou.
+      - LITELLM_MASTER_KEY=${LITELLM_MASTER_KEY:?defina LITELLM_MASTER_KEY no .env}
+      - DATABASE_URL=postgresql://litellm:${POSTGRES_PASSWORD:?defina POSTGRES_PASSWORD}@db:5432/litellm
+    healthcheck:
+      test: ["CMD-SHELL", "python -c \"import urllib.request;urllib.request.urlopen('http://127.0.0.1:4000/health/liveliness',timeout=3)\""]
+      interval: 15s
+      timeout: 5s
+      retries: 10
+      start_period: 40s
+
+  litellmrtksync:
+    image: ghcr.io/pathbit/litellmrtksync:latest
+    container_name: litellmrtksync
+    restart: unless-stopped
+    ports:
+      # Porta interna 9090, igual nos tres sincronizadores; publicada em 9093.
+      - "127.0.0.1:9093:9090"
+    volumes:
+      - litellmrtksync_data:/app/data
+    environment:
+      - LITELLM_URL=http://litellm:4000
+      - LITELLM_MASTER_KEY=${LITELLM_MASTER_KEY:?defina LITELLM_MASTER_KEY no .env}
+      - SYNC_INTERVAL=${SYNC_INTERVAL:-300}
+      - REFRESH_MARGIN=${REFRESH_MARGIN:-900}
+      # Teto da plataforma: nenhum time e nenhuma chave pode declarar acima.
+      - PLATFORM_RPM_LIMIT=${PLATFORM_RPM_LIMIT:-}
+      - PLATFORM_TPM_LIMIT=${PLATFORM_TPM_LIMIT:-}
+      - PLATFORM_MAX_BUDGET=${PLATFORM_MAX_BUDGET:-}
+      - ENABLE_WEB_DASHBOARD=${ENABLE_WEB_DASHBOARD:-1}
+      - WEB_PORT=${WEB_PORT:-9090}
+      - DASHBOARD_USER=${DASHBOARD_USER:-admin}
+      - DASHBOARD_PASSWORD=${DASHBOARD_PASSWORD:-}
+    depends_on:
+      litellm:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "/opt/venv/bin/python3", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:9090/healthz', timeout=3)"]
+      interval: 15s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
+
+volumes:
+  litellmrtksync_data:
+```
+
+---
+
+## Local Development in Virtual Environment
+
+Following standard environment isolation, local runs strictly use a Python virtual environment with [Python 3.14.7](https://www.python.org/ftp/python/3.14.7/python-3.14.7-macos11.pkg):
+
+### 1. Clone the Repository
+
+```bash
+git clone https://github.com/pathbit/LiteLlmRTKSync.git
+cd LiteLlmRTKSync
+```
+
+### 2. Create and Activate the Virtual Environment
+
+```bash
+python3 -m venv .venv
+source .venv/bin/activate
+pip install --upgrade pip
+pip install -e .
+```
+
+### 3. Configure Environment Variables (.env)
+
+Copy the official template to create your local `.env` file (the `.env` file is strictly ignored by git):
+
+```bash
+cp .env.example .env
+```
+
+### 4. Available CLI Commands
+
+```bash
+# Inspect the proxy once and print every finding
+litellmrtksync --status --url http://127.0.0.1:4000
+
+# Run an immediate one-shot inspection pass
+litellmrtksync --once
+
+# Run continuous background daemon with web dashboard on port 9090 (published on 9093)
+litellmrtksync --daemon
+```
+
+`--status` exits `1` when it finds an incoherent limit, so it drops straight into CI.
+
+---
+
+## Environment Variables
+
+| Variable | Default | Description |
+| :--- | :--- | :--- |
+| `LITELLM_URL` | `http://litellm:4000` | Base URL of the LiteLLM proxy |
+| `LITELLM_MASTER_KEY` | *(empty)* | Master key used to read administrative state. Required; a secret — set it in `.env`, never in the example |
+| `SYNC_INTERVAL` | `300` | Inspection cycle interval in seconds |
+| `REFRESH_MARGIN` | `900` | How far ahead a virtual key starts being reported as expiring |
+| `CRON_ENABLED` | `1` | Internal scheduler (`1` to enable, `0` to disable) |
+| `CRON_INTERVAL` | inherits `SYNC_INTERVAL` | Scheduler interval when it should differ from the cycle |
+| `PLATFORM_RPM_LIMIT` | *(empty)* | Platform-wide requests-per-minute ceiling. No team or key may declare above it |
+| `PLATFORM_TPM_LIMIT` | *(empty)* | Platform-wide tokens-per-minute ceiling |
+| `PLATFORM_MAX_BUDGET` | *(empty)* | Platform-wide budget ceiling |
+| `ENABLE_WEB_DASHBOARD` | `1` | Enable the embedded web dashboard (`1` to enable, `0` to disable) |
+| `WEB_PORT` | `9090` | HTTP port for the web dashboard |
+| `WEB_HOST` | `0.0.0.0` | Network binding interface for the dashboard web server |
+| `DASHBOARD_USER` | `admin` | HTTP Basic Auth username for web dashboard access |
+| `DASHBOARD_PASSWORD` | *(empty)* | Panel password. Left empty, the first sign-in uses the recovery credential generated on first boot |
+| `DASHBOARD_RECOVERY_HASH` | auto | Break-glass credential hash. Generated on first boot when omitted |
+| `CREDENTIAL_CHECK_ENABLED` | `1` | Ask each provider whether the key declared on the model is still accepted |
+| `CREDENTIAL_CHECK_TIMEOUT` | `8` | Timeout in seconds for each credential probe |
+| `DATA_DIR` | `/app/data` | Base directory for everything this container writes. Created on startup |
+| `LOG_DIR` | `<DATA_DIR>/logs` | Directory for persistent logs |
+| `LOG_RETENTION_DAYS` | `30` | Days of log history to keep |
+| `LOG_LEVEL` | `INFO` | Minimum level written to the log |
+| `LOG_TO_STDOUT` | `1` | Also write the log to stdout (`1`/`0`) |
+
+Leaving the three `PLATFORM_*` values empty is a choice, not an error — the panel
+reports "no cap declared" and moves on.
+
+---
+
+## Web Dashboard
+
+When running with `ENABLE_WEB_DASHBOARD=1`, access the dashboard in your browser:
+
+👉 **http://localhost:9093**
+
+Dashboard capabilities:
+* Live operational metrics (virtual keys, teams, models, findings by severity).
+* Expiry countdown per virtual key, with an undeclared expiry shown as undeclared.
+* Rate-limit coherence report naming the field, both values and the consequence.
+* Proxy liveness card against `/health/liveliness`; the panel's own `/healthz` answers `OK` or `LITELLM_UNREACHABLE`.
+* Manual inspection trigger (`POST /acoes/atualizar`) and full state as JSON (`GET /api/status`).
+
+---
+
+## Unit and Integration Testing
+
+You can run the test suite with zero installations on your host machine (Docker only), or locally via your virtual environment.
+
+### Option 1. Container Testing (Zero Host Installation)
+
+The only requirement is Docker. Nothing else needs to be installed on your machine:
+
+```bash
+# Via Makefile target
+make test-container
+
+# Or via Docker Compose, against a real LiteLLM + Postgres stack
 docker compose -f docker-compose.test.yml up -d
 ```
 
-The panel answers on `http://127.0.0.1:9093`, bound to loopback. The first login
-uses the recovery credential generated on first boot; the log says which file
-holds it, never its value. Set your own password on the screen — there is no
-factory password, because a static default is a public credential by definition.
+### Option 2. Local Virtual Environment (Optional Prerequisites)
 
-Without Docker:
+If you prefer testing directly on your host with Python 3.14+:
 
 ```bash
-make venv && make test
-PYTHONPATH=src python3 -m litellm_rtksync.cli --status
+source .venv/bin/activate
+make test
+# Or directly
+PYTHONPATH=src python3 -m unittest discover -s tests -p "test_*.py"
 ```
 
-`--status` exits `1` when it finds an incoherent limit, so it drops straight
-into CI.
+---
 
 ## Security posture
 
@@ -93,7 +276,24 @@ Inherited from the siblings, for the same reasons:
   which;
 - a cross-origin `POST` is refused, because the browser attaches Basic Auth to a
   third-party form on its own;
-- an undeclared expiry is reported as undeclared, never as "unlimited".
+- there is no factory password: a static default is a public credential by
+  definition.
+
+---
+
+## Contributing and Branch Protection
+
+* The `master` branch is protected. All contributions must be submitted through Pull Requests and pass all CI checks.
+* For bug reports or new provider requests, please open an issue in [GitHub Issues](https://github.com/pathbit/LiteLlmRTKSync/issues).
+* Official upstream proxy: [LiteLLM on GitHub](https://github.com/BerriAI/litellm).
+
+---
+
+## 📄 License
+
+Distributed under the MIT License. The full text is available in [LICENSE](https://github.com/pathbit/LiteLlmRTKSync/blob/master/LICENSE).
+
+In practice: use, copy, modify, and distribute freely, including commercially, provided that copyright and license notices accompany copies. The software is provided as is, without warranty.
 
 ---
 
@@ -111,22 +311,30 @@ verifica sozinho:
 3. um **limite de chave acima do limite do time é aceito sem reclamação** —
    verificado contra um proxy real: um time com `rpm_limit=60` aceita uma chave
    declarando `rpm_limit=600`. Vale sempre o teto mais restritivo do caminho,
-   então o número maior existe só no cadastro.
+   então o número maior existe só no cadastro, e quem configurou acredita ter
+   600 e recebe 60.
 
 Tudo aqui é **somente leitura**. A ferramenta relata e valida; alterar limite,
 chave ou modelo é decisão do operador, pelas telas do próprio LiteLLM.
 
 **Coerência de limites:** uma regra só, campo a campo em `tpm_limit`,
 `rpm_limit`, `max_parallel_requests` e `max_budget` — nenhum nível pode declarar
-valor maior que o de cima: chave ≤ time ≤ padrão da plataforma.
+valor maior que o de cima: **chave ≤ time ≤ padrão da plataforma**. O teto da
+plataforma vem de `PLATFORM_RPM_LIMIT`, `PLATFORM_TPM_LIMIT` e
+`PLATFORM_MAX_BUDGET`; deixá-los vazios é uma escolha, não um erro.
+
+**Documentação completa:** [wiki do projeto](../../wiki), gerada de
+[`docs/wiki/`](docs/wiki) — instalação, contrato de variáveis, painel,
+autenticação e recuperação, log persistente, arquitetura, diagnóstico e
+coerência de limites.
 
 **Como rodar:** copie `.env.example` para `.env`, preencha a master key e os
 tetos, e suba com `docker compose -f docker-compose.test.yml up -d`. O painel
 responde em `http://127.0.0.1:9093`, preso ao loopback. O primeiro acesso usa a
-credencial de recuperação gerada no primeiro boot — o log diz em qual arquivo
+credencial de recuperação, gerada no primeiro boot — o log diz em qual arquivo
 ela está, nunca o valor. Defina a sua senha pela tela: não existe senha de
 fábrica, porque um valor estático é, por definição, uma credencial pública.
 
 ---
 
-MIT. Veja [`LICENSE`](LICENSE).
+Developed with ❤️ by [Pathbit](https://pathbit.co/)
