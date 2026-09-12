@@ -99,7 +99,7 @@ On first boot with `DASHBOARD_PASSWORD` empty, the container generates a
 **recovery credential** and writes it inside the data directory. Read it:
 
 ```bash
-docker exec litellm-rtksync cat /app/data/.dashboard_recovery
+docker exec litellmrtk-test-sync cat /app/data/.dashboard_recovery
 ```
 
 Sign in as `admin` with that value, then set a real password on the screen. The
@@ -171,7 +171,7 @@ Add `litellmrtksync` to your `docker-compose.yml` alongside your LiteLLM proxy:
 services:
   litellm:
     image: ghcr.io/berriai/litellm:main-stable
-    container_name: litellm
+    container_name: litellmrtk-router
     restart: unless-stopped
     ports:
       # 4000 dentro do container; 8083 no host.
@@ -190,7 +190,7 @@ services:
 
   litellmrtksync:
     image: ghcr.io/pathbit/litellmrtksync:latest
-    container_name: litellmrtksync
+    container_name: litellmrtk-sync
     restart: unless-stopped
     ports:
       # Porta interna 9090, igual nos tres sincronizadores; publicada em 9093.

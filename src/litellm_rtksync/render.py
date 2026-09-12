@@ -97,6 +97,9 @@ def render_notice_page(title: str, body: str, link_label: str = "") -> bytes:
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
+  <!-- Favicon embutido: o /favicon.ico do painel responde 401, entao sem
+       isto a aba fica com o icone generico. Cada sincronizador tem o seu. -->
+  <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'><rect width='32' height='32' rx='7' fill='%233d0a0a'/><g fill='none' stroke='%23ffffff' stroke-width='2.6' stroke-linecap='round' stroke-linejoin='round'><path d='M6 22 a10 10 0 0 1 20 0'/><path d='M16 22 L21.5 13.5'/><circle cx='16' cy='22' r='1.6' fill='%23ffffff'/></g></svg>">
   <meta name="robots" content="noindex, nofollow">
   <title>{esc(title)}</title>
   <link rel="stylesheet" href="{BOOTSTRAP_CSS}">
@@ -500,8 +503,14 @@ def render_dashboard(
                       padding: .15rem .5rem; font-family: var(--bs-font-monospace); font-size: .78rem;
                       text-transform: uppercase; }}
     .table-dark {{ --bs-table-bg: transparent; --bs-table-border-color: var(--line); }}
+    /* A marca e icone BRANCO sobre um tom claro do proprio tema. O gradiente
+       de duas cores fazia as tres telas parecerem a mesma marca em cores
+       diferentes; com a forma do icone distinta e o fundo discreto, quem
+       identifica o produto e o desenho, e a cor fica por conta do tema. */
     .brand-mark {{ width: 2.25rem; height: 2.25rem; display: grid; place-items: center; border-radius: .5rem;
-                   background: linear-gradient(135deg, var(--brand-a), var(--brand-b)); color: #fff; font-size: 1.1rem; }}
+                   background: color-mix(in srgb, var(--brand-b) 22%, transparent);
+                   border: 1px solid color-mix(in srgb, var(--brand-b) 45%, transparent);
+                   color: #fff; font-size: 1.15rem; }}
     .list-group-item {{ background: var(--surface); color: var(--text); border-color: var(--line); }}
     /* O botao primario segue o acento do produto, em vez do azul fixo do
        Bootstrap: senao os tres mudam de fundo e ficam com o mesmo botao, o que
@@ -530,7 +539,7 @@ def render_dashboard(
 
     <header class="d-flex flex-wrap align-items-center justify-content-between gap-3 mb-4">
       <div class="d-flex align-items-center gap-3">
-        <span class="brand-mark"><i class="bi bi-diagram-3" aria-hidden="true"></i></span>
+        <span class="brand-mark"><i class="bi bi-speedometer2" aria-hidden="true"></i></span>
         <div>
           <h1 class="h4 mb-0">LiteLlmRTKSync</h1>
           <p class="text-secondary small mb-0 font-monospace">

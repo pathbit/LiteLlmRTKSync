@@ -14,7 +14,7 @@ services:
     # Prisma. Nao ha modo sem banco: sem ele o proxy sobe sem API administrativa,
     # e e justamente a API administrativa que este sincronizador le.
     image: postgres:16-alpine
-    container_name: litellmrtksync-db
+    container_name: litellmrtk-db
     restart: unless-stopped
     environment:
       - POSTGRES_USER=litellm
@@ -32,7 +32,7 @@ services:
 
   litellm:
     image: ghcr.io/berriai/litellm:main-stable
-    container_name: litellm
+    container_name: litellmrtk-router
     restart: unless-stopped
     ports:
       # Porta interna 4000 (padrao do LiteLLM); publicada em 8083 no host.
@@ -45,6 +45,11 @@ services:
       - LITELLM_MASTER_KEY=${LITELLM_MASTER_KEY:?defina LITELLM_MASTER_KEY no .env}
       - LITELLM_SALT_KEY=${LITELLM_SALT_KEY:?defina LITELLM_SALT_KEY no .env (openssl rand -hex 32)}
       - STORE_MODEL_IN_DB=True
+      # Credencial da UI do LiteLLM. Sem estas duas, a tela de login aceita a
+      # MASTER_KEY como senha -- ou seja, para ver um painel o operador digita
+      # a credencial que administra a instalacao inteira.
+      - UI_USERNAME=${DASHBOARD_USER:-admin}
+      - UI_PASSWORD=${DASHBOARD_PASSWORD:?defina DASHBOARD_PASSWORD no .env}
     depends_on:
       postgres:
         condition: service_healthy
@@ -63,7 +68,7 @@ services:
 
   litellmrtksync:
     image: ghcr.io/pathbit/litellmrtksync:latest
-    container_name: litellmrtksync
+    container_name: litellmrtk-sync
     restart: unless-stopped
     ports:
       # Porta interna 9090, igual nos tres sincronizadores; publicada em 9093 no

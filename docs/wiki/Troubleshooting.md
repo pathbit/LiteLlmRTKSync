@@ -33,7 +33,7 @@ The panel is running; the proxy is not answering `/health/liveliness`. In order 
 3. **The proxy is genuinely down.**
 
 ```bash
-docker exec litellmrtksync /opt/venv/bin/python3 -c \
+docker exec litellmrtk-sync /opt/venv/bin/python3 -c \
   "import urllib.request;print(urllib.request.urlopen('http://litellm:4000/health/liveliness',timeout=5).status)"
 ```
 
@@ -99,7 +99,7 @@ See [Authentication](Authentication).
 The **recovery credential** stays valid after a normal password is set, precisely for this:
 
 ```bash
-docker exec litellmrtksync cat /app/data/.dashboard_recovery
+docker exec litellmrtk-sync cat /app/data/.dashboard_recovery
 ```
 
 Sign in as `admin` with that value and set a new password on the screen.

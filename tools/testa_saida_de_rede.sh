@@ -103,8 +103,8 @@ echo
 echo "-- 5. A PERGUNTA QUE IMPORTA: com o proxy fora do ar, o que acontece? --"
 echo "     Se a requisicao ainda for atendida, ela saiu DIRETO -- pelo IP da"
 echo "     maquina, com o token da conta. E o vazamento silencioso."
-if docker ps --format '{{.Names}}' | grep -qx egress-proxy-b; then
-  docker stop egress-proxy-b >/dev/null 2>&1
+if docker ps --format '{{.Names}}' | grep -qx litellmrtk-proxy-b; then
+  docker stop litellmrtk-proxy-b >/dev/null 2>&1
   sleep 2
   visto=$(origem_vista "$PROXY_B" "/proxy-morto")
   if [ -z "$visto" ]; then
@@ -115,10 +115,10 @@ if docker ps --format '{{.Names}}' | grep -qx egress-proxy-b; then
   else
     falha "proxy fora do ar -> a requisicao FALHA" "resposta inesperada de $visto"
   fi
-  docker start egress-proxy-b >/dev/null 2>&1
+  docker start litellmrtk-proxy-b >/dev/null 2>&1
   sleep 3
 else
-  falha "proxy fora do ar -> a requisicao FALHA" "egress-proxy-b nao esta na bancada"
+  falha "proxy fora do ar -> a requisicao FALHA" "litellmrtk-proxy-b nao esta na bancada"
 fi
 
 echo

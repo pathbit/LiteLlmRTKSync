@@ -1,4 +1,4 @@
-name: egress-test
+name: litellmrtk-egress
 
 # Bancada para testar POR ONDE o trafego sai.
 #
@@ -21,7 +21,7 @@ services:
   # se o vinculo por conta realmente separa as saidas.
   proxy-a:
     image: ubuntu/squid:latest
-    container_name: egress-proxy-a
+    container_name: litellmrtk-proxy-a
     restart: unless-stopped
     ports:
       - "127.0.0.1:18081:3128"
@@ -39,7 +39,7 @@ services:
 
   proxy-b:
     image: ubuntu/squid:latest
-    container_name: egress-proxy-b
+    container_name: litellmrtk-proxy-b
     restart: unless-stopped
     ports:
       - "127.0.0.1:18082:3128"
@@ -60,7 +60,7 @@ services:
   # direto da maquina.
   echo:
     image: python:3.12-alpine
-    container_name: egress-echo
+    container_name: litellmrtk-echo
     restart: unless-stopped
     ports:
       - "127.0.0.1:18080:8080"

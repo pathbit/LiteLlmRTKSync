@@ -49,7 +49,7 @@ and read by people who should not have the credential.
 Read it, sign in as `admin` with it, and set your own password on the screen.
 
 ```bash
-docker exec litellmrtksync cat /app/data/.dashboard_recovery
+docker exec litellmrtk-sync cat /app/data/.dashboard_recovery
 ```
 
 ### It keeps working after you set a password

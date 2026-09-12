@@ -39,7 +39,7 @@ docker-build:
 	docker build -t litellmrtksync:latest -t ghcr.io/pathbit/litellmrtksync:latest .
 
 docker-run:
-	docker run --rm -it --name litellmrtksync -p 9092:9090 litellmrtksync:latest
+	docker run --rm -it --name litellmrtk-sync -p 9092:9090 litellmrtksync:latest
 
 clean:
 	find . -type d -name "__pycache__" -exec rm -rf {} +

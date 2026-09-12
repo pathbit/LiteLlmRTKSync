@@ -14,7 +14,7 @@ it never touches the proxy's Postgres. It talks to the administrative API.
 services:
   litellmrtksync:
     image: ghcr.io/pathbit/litellmrtksync:latest
-    container_name: litellmrtksync
+    container_name: litellmrtk-sync
     restart: unless-stopped
     ports:
       # Porta interna 9090, igual nos tres sincronizadores; publicada em 9093
