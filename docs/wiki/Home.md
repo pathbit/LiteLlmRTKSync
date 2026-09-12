@@ -21,6 +21,7 @@ republishes these pages automatically. Editing a page directly here will be over
 | [Authentication](Authentication) | Credentials, headless mode, break-glass recovery |
 | [Logging](Logging) | Persistent file log, rotation, 30-day retention |
 | [Architecture](Architecture) | How the inspection engine talks to the LiteLLM admin API |
+| [Remote Access](Remote-Access) | Tunnel, Tailscale, and what has to be on before either |
 | [Rate Limit Coherence](Rate-Limit-Coherence) | The rule this project exists for: key ≤ team ≤ platform |
 | [Troubleshooting](Troubleshooting) | Concrete symptoms and what they actually mean |
 | [Upstream Fixes](Upstream-Fixes) | What was found in LiteLLM and reported upstream |

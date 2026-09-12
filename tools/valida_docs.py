@@ -34,7 +34,7 @@ RX_PORTA = re.compile(r"(?<![\w.:])(\d{4,5})(?![\w.])")
 
 # Linha que invoca outro programa: as flags citadas pertencem a ele.
 RX_COMANDO_DE_TERCEIRO = re.compile(
-    r"\b(pip|pip3|docker|docker[- ]compose|git|curl|wget|tailscale|make|npm|npx|"
+    r"\b(pip|pip3|docker|docker[- ]compose|git|curl|wget|tailscale|cloudflared|make|npm|npx|"
     r"apt|apt-get|brew|systemctl|python3?\s+-m\s+venv|openssl|psql)\b"
 )
 
@@ -155,8 +155,13 @@ def verificar(raiz: str, nome: str) -> List[str]:
                 if flag not in flags_ok:
                     problemas.append(f"{nome}/{rel}:{n}  flag citada e inexistente no CLI: {flag}")
 
-            # Uma rota citada numa frase sobre o gateway e do gateway.
-            if RX_ROTA_DO_GATEWAY.search(linha):
+            # Uma rota citada numa frase sobre o gateway e do gateway. A frase
+            # pode estar quebrada em varias linhas -- prosa com margem de 80
+            # colunas quebra no meio o tempo todo -- entao vale o paragrafo, e
+            # nao a linha isolada: olhar so a linha acusava uma rota do gateway
+            # sempre que a palavra "gateway" tinha caido na linha de cima.
+            contexto = "".join(linhas[max(0, n - 3):n + 1])
+            if RX_ROTA_DO_GATEWAY.search(contexto):
                 continue
 
             for rota in RX_ROTA.findall(linha):
