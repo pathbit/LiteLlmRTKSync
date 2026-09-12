@@ -80,7 +80,7 @@ credential; printing it whole to diagnose a limit would trade one problem for a 
 `--status` exits `1` when it finds an incoherent limit:
 
 ```bash
-litellmrtksync --status --url http://127.0.0.1:4000 || echo "revisar limites"
+litellmrtksync --status --url http://127.0.0.1:8083 || echo "revisar limites"
 ```
 
 That makes it usable as a gate: a pull request that introduces a key above its team's ceiling

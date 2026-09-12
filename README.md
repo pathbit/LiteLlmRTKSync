@@ -141,12 +141,16 @@ lado. O mesmo vale para os gateways: cada um tem a sua.
 
 | Serviço | Porta interna | Publicada no host |
 | :--- | :--- | :--- |
-| 9Router | `20128` | `20128` |
-| OmniRoute | `20128` | `20129` |
-| LiteLLM | `4000` | `20130` |
+| 9Router | `20128` | `8081` |
+| OmniRoute | `20128` | `8082` |
+| LiteLLM | `4000` | `8083` |
 | 9RTKSync (painel) | `9090` | `9091` |
 | OminiRTkSync (painel) | `9090` | `9092` |
 | LiteLlmRTKSync (painel) | `9090` | `9093` |
+
+A stack dos artigos (`claudegravity`) fica com a **`20128`**, a porta padrão do
+9Router. As stacks dos repositórios saem dessa faixa de propósito: assim você
+roda o artigo e os três sincronizadores ao mesmo tempo, sem conflito.
 
 Tudo preso a `127.0.0.1`: o gateway carrega credenciais reais e não deve ficar
 acessível na rede local. Para mudar qualquer uma, altere o lado esquerdo do
@@ -170,7 +174,8 @@ services:
     container_name: litellm
     restart: unless-stopped
     ports:
-      - "127.0.0.1:4000:4000"
+      # 4000 dentro do container; 8083 no host.
+      - "127.0.0.1:8083:4000"
     environment:
       # Sem valor de fallback: um segredo publicado em arquivo de exemplo vira o
       # segredo real de toda implantacao que so copiou e colou.
@@ -253,7 +258,7 @@ cp .env.example .env
 
 ```bash
 # Inspect the proxy once and print every finding
-litellmrtksync --status --url http://127.0.0.1:4000
+litellmrtksync --status --url http://127.0.0.1:8083
 
 # Run an immediate one-shot inspection pass
 litellmrtksync --once

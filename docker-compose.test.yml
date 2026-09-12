@@ -30,9 +30,10 @@ services:
     container_name: litellm-test-proxy
     restart: unless-stopped
     ports:
-      # Porta interna 4000 (padrao do LiteLLM); publicada em 20130 no host,
-      # na mesma faixa dos outros gateways: 20128 9Router, 20129 OmniRoute.
-      - "127.0.0.1:20130:4000"
+      # Porta interna 4000 (padrao do LiteLLM); publicada em 8083 no host.
+      # Cada gateway tem a sua porta no host: 8081 9Router, 8082 OmniRoute,
+      # 8083 LiteLLM.
+      - "127.0.0.1:8083:4000"
     environment:
       - DATABASE_URL=postgresql://litellm:${POSTGRES_PASSWORD:?defina POSTGRES_PASSWORD no .env}@postgres:5432/litellm
       - LITELLM_MASTER_KEY=${LITELLM_MASTER_KEY:?defina LITELLM_MASTER_KEY no .env}

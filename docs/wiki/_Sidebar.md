@@ -7,6 +7,7 @@
 - [Authentication](Authentication)
 - [Logging](Logging)
 - [Architecture](Architecture)
+- [Remote Access](Remote-Access)
 - [Rate Limit Coherence](Rate-Limit-Coherence)
 - [Troubleshooting](Troubleshooting)
 - [Upstream Fixes](Upstream-Fixes)
