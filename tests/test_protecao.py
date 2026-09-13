@@ -106,6 +106,53 @@ class ProvaDeTrabalho(unittest.TestCase):
             self.assertFalse(protecao.resposta_confere(desafio, resposta))
 
 
+class DificuldadeQueCresce(unittest.TestCase):
+    """Doze milissegundos não param um ataque distribuído por muitos endereços.
+
+    O teto por janela é por endereço, então quem tem mil máquinas nunca o
+    atinge. O que encarece esse ataque é a dificuldade subir com a insistência
+    de cada endereço -- sem cobrar nada de quem errou a senha uma vez.
+    """
+
+    def setUp(self):
+        protecao.limpa_apos_sucesso("10.0.0.9")
+
+    def test_quem_nunca_errou_paga_o_minimo(self):
+        self.assertEqual(protecao.dificuldade_para("10.0.0.9"), protecao.DIFICULDADE)
+
+    def test_insistir_encarece(self):
+        for _ in range(protecao.FALHAS_ATE_DESAFIO + 6):
+            protecao.anota_falha("10.0.0.9")
+        self.assertGreater(
+            protecao.dificuldade_para("10.0.0.9"),
+            protecao.DIFICULDADE,
+            "quem insiste tem de pagar mais caro a cada bloco de falhas",
+        )
+
+    def test_a_dificuldade_tem_teto(self):
+        """Sem teto, o navegador de um humano distraído travaria."""
+        for _ in range(200):
+            protecao.anota_falha("10.0.0.9")
+        self.assertLessEqual(
+            protecao.dificuldade_para("10.0.0.9"), protecao.DIFICULDADE_MAXIMA
+        )
+
+    def test_a_resposta_e_conferida_na_dificuldade_cobrada(self):
+        """Resolver o fácil e mandar onde se pede o difícil não pode passar."""
+        desafio = protecao.novo_desafio()
+        alvo_facil = "0" * 3
+        for n in range(200000):
+            if hashlib.sha256(f"{desafio}{n}".encode()).hexdigest().startswith(alvo_facil):
+                resposta_facil = str(n)
+                break
+        else:
+            self.skipTest("não achei solução fácil em tempo razoável")
+        resumo = hashlib.sha256(f"{desafio}{resposta_facil}".encode()).hexdigest()
+        if resumo.startswith("0" * 6):
+            self.skipTest("a solução fácil calhou de servir para a difícil")
+        self.assertFalse(protecao.resposta_confere(desafio, resposta_facil, 6))
+
+
 class EnderecoDoCliente(unittest.TestCase):
     def test_ignora_a_porta_de_origem(self):
         """A porta muda a cada conexão; contar por ela não limitaria nada."""

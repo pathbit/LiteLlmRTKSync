@@ -202,7 +202,8 @@ class LiteLlmDashboardHandler(BaseHTTPRequestHandler):
         # nunca o ve, e quem insiste passa a pagar CPU por tentativa.
         endereco = protecao.endereco_do_cliente(self.client_address)
         desafio = protecao.novo_desafio() if protecao.precisa_de_desafio(endereco) else ""
-        body = render_login_page(lang, erro, desafio, protecao.DIFICULDADE)
+        dificuldade = protecao.dificuldade_para(endereco)
+        body = render_login_page(lang, erro, desafio, dificuldade)
         self.send_response(HTTPStatus.OK)
         self.send_header("Content-Type", "text/html; charset=utf-8")
         self.send_header("Content-Length", str(len(body)))
@@ -232,7 +233,9 @@ class LiteLlmDashboardHandler(BaseHTTPRequestHandler):
         if protecao.precisa_de_desafio(endereco):
             desafio = (campos.get("desafio") or [""])[0]
             resposta = (campos.get("resposta") or [""])[0]
-            if not protecao.resposta_confere(desafio, resposta):
+            if not protecao.resposta_confere(
+                desafio, resposta, protecao.dificuldade_para(endereco)
+            ):
                 protecao.anota_falha(endereco)
                 self.serve_login_page(translate("auth.login_failed", self.resolve_language()))
                 return

@@ -38,9 +38,31 @@ FALHAS_ATE_DESAFIO = 3
 ESPERA_INICIAL_EM_SEGUNDOS = 1.0
 ESPERA_MAXIMA_EM_SEGUNDOS = 30.0
 
-# Quantos zeros hexadecimais o resumo precisa ter. Quatro custa alguns milhares
-# de tentativas: imperceptível para quem entra uma vez, caro para quem insiste.
+# Quantos zeros hexadecimais o resumo precisa ter. Cada zero a mais multiplica
+# o custo por dezesseis, e medido nesta máquina:
+#
+#     3 zeros ->     1 ms  (~1.500 tentativas)
+#     4 zeros ->    12 ms  (~29.000 tentativas)
+#     5 zeros ->   532 ms  (~1.275.000 tentativas)
+#
+# Conferir custa 0,3 microssegundo em qualquer um deles -- é essa assimetria,
+# de mais de quarenta mil vezes, que faz a prova de trabalho servir.
 DIFICULDADE = 4
+
+# A dificuldade CRESCE com a insistência. Doze milissegundos não incomodam quem
+# errou a senha, e também não incomodam um bot que só quer testar uma senha por
+# endereço -- é o ataque distribuído, com muitos IPs, que o teto por janela não
+# alcança. Subir um zero a cada bloco de falhas põe o preço onde ele precisa
+# estar sem cobrar nada de quem acerta na segunda tentativa.
+DIFICULDADE_MAXIMA = 6
+
+
+def dificuldade_para(endereco: str) -> int:
+    """Quantos zeros exigir deste endereço, dado o histórico dele."""
+    with _trava:
+        falhas = _falhas.get(endereco, 0)
+    extra = max(0, (falhas - FALHAS_ATE_DESAFIO) // 3)
+    return min(DIFICULDADE + extra, DIFICULDADE_MAXIMA)
 
 _trava = threading.Lock()
 _tentativas: Dict[str, List[float]] = {}
@@ -110,15 +132,16 @@ def novo_desafio() -> str:
     return desafio
 
 
-def resposta_confere(desafio: str, resposta: str) -> bool:
+def resposta_confere(desafio: str, resposta: str, dificuldade: Optional[int] = None) -> bool:
     """Confere a prova de trabalho e consome o desafio (uso único)."""
     if not desafio or not resposta:
         return False
+    exigidos = DIFICULDADE if dificuldade is None else dificuldade
     with _trava:
         if desafio not in _desafios:
             return False
     resumo = hashlib.sha256(f"{desafio}{resposta}".encode("utf-8")).hexdigest()
-    if not resumo.startswith("0" * DIFICULDADE):
+    if not resumo.startswith("0" * exigidos):
         return False
     with _trava:
         # Consumido: reapresentar a mesma resposta não passa de novo.
