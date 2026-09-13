@@ -154,6 +154,121 @@ everything else.
 
 ---
 
+---
+
+## Colocando de pé: os dois perfis do compose
+
+O botão `Tunnel` / `Tailscale` que o painel do gateway oferece instala o binário
+**dentro do contêiner do gateway**, que é efêmero: recriar a stack desfaz a
+instalação, e nada no compose registra que aquilo existiu. É por isso que o
+diálogo do Tailscale responde *"Tailscale is not installed"* numa máquina onde
+você jurava ter instalado.
+
+Este repositório declara os dois como serviços opcionais, que sobem e descem com
+o resto e deixam rastro em arquivo:
+
+```bash
+# URL pública, via Cloudflare
+docker compose -f docker-compose.example.yml --profile tunel up -d
+
+# só quem está na sua tailnet
+docker compose -f docker-compose.example.yml --profile tailnet up -d
+```
+
+Sem `--profile`, nenhum dos dois sobe — o padrão continua sendo o painel preso
+ao loopback.
+
+### Antes de ligar qualquer um dos dois
+
+O painel do gateway avisa em vermelho: *"Change the default dashboard password
+before activating the tunnel."* O aviso não é decoração, e a ordem importa:
+
+```
+1. LITELLM_MASTER_KEY forte -- ela administra a instalação inteira
+2. UI_USERNAME e UI_PASSWORD próprios: sem eles, a tela de login do LiteLLM
+   aceita a própria MASTER_KEY como senha, ou seja, para ver um painel o
+   operador digita a credencial que pode tudo
+3. só então o túnel ou a tailnet
+```
+
+Com a porta em `127.0.0.1`, `REQUIRE_LOGIN=false` é aceitável porque só a sua
+máquina alcança. No instante em que um túnel sobe, esse raciocínio se inverte:
+`/v1` é prefixo público por projeto, então **quem souber a URL gasta as suas
+contas**.
+
+### Cloudflare: quick tunnel ou túnel nomeado
+
+Sem `TUNNEL_TOKEN` no `.env`, o serviço sobe um **quick tunnel**: zero
+configuração, e o endereço sai no log.
+
+```bash
+docker logs 9rtk-tunel 2>&1 | grep -o 'https://[a-z0-9-]*\.trycloudflare\.com'
+```
+
+Esse endereço é **novo a cada subida** e é **público para quem o tiver** — não há
+lista de permissão. Serve para uma demonstração, não para o dia a dia.
+
+Com `TUNNEL_TOKEN` preenchido (um túnel nomeado, criado no painel da Cloudflare),
+o endereço passa a ser estável e você ganha o que interessa de verdade:
+**Cloudflare Access na frente**, que autentica antes de a requisição chegar no
+gateway. É a única das opções aqui em que a autenticação acontece fora do
+produto.
+
+```bash
+# .env
+TUNNEL_TOKEN=<o token que o painel da Cloudflare mostra ao criar o túnel>
+```
+
+### Tailscale: a opção que não publica nada
+
+A diferença que decide a escolha: o túnel dá um endereço que **qualquer um**
+alcança; a tailnet só admite dispositivo que você cadastrou. Para um painel que
+lê credenciais, a segunda é quase sempre a certa.
+
+```bash
+# 1. gere uma chave efêmera em
+#    https://login.tailscale.com/admin/settings/keys
+# 2. ponha no .env
+TS_AUTHKEY=tskey-auth-...
+
+# 3. suba o perfil
+docker compose -f docker-compose.example.yml --profile tailnet up -d
+
+# 4. descubra o nome na tailnet
+docker exec litellmrtk-tailnet tailscale status
+```
+
+Chave **efêmera** de propósito: o nó some sozinho da sua tailnet quando o
+contêiner morre, em vez de acumular máquinas fantasma na lista.
+
+### Qual dos dois
+
+| | Cloudflare quick | Cloudflare nomeado | Tailscale |
+| :--- | :--- | :--- | :--- |
+| Quem alcança | qualquer um com a URL | quem o Access deixar | só a sua tailnet |
+| Endereço estável | não | sim | sim |
+| Precisa de conta | não | sim (grátis) | sim (grátis) |
+| Autenticação fora do produto | não | **sim** (Access) | não (mas a rede já filtra) |
+| Bom para | uma demonstração | equipe, uso diário | você e os seus aparelhos |
+
+### O que o sincronizador faz por você aqui
+
+O painel deste sincronizador **não** deve ser exposto: ele lê o banco do gateway
+e mostra a saúde das credenciais. Os dois perfis acima apontam para o **gateway**,
+não para ele. Alcance o painel pelo mesmo túnel ou tailnet que você já usa para
+o resto, ou por `127.0.0.1` mesmo.
+
+Se você expuser assim mesmo, o login já está preparado: formulário próprio com
+cookie de sessão, teto de dez tentativas por endereço a cada cinco minutos
+(**429** com `Retry-After`), espera que dobra a cada falha e prova de trabalho
+depois da terceira. Confira o que você expôs:
+
+```bash
+# de outro aparelho, SEM credencial — os dois têm de recusar
+curl -si https://<seu-endereco>/v1/models | head -1     # espera-se 401
+curl -si https://<seu-endereco>/            | head -1     # espera-se 401 ou o formulário
+```
+
 # Em português
 
 Alcançar o gateway de outra máquina tem três respostas usuais. Elas diferem em

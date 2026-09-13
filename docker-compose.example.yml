@@ -128,7 +128,68 @@ services:
       retries: 3
       start_period: 10s
 
+  # --- Acesso remoto (opcional, nao sobe por padrao) -----------------------
+  #
+  # Os dois servicos abaixo so existem quando voce pede o perfil:
+  #   docker compose --profile tunel   up -d   # URL publica via Cloudflare
+  #   docker compose --profile tailnet up -d   # so quem esta na sua tailnet
+  #
+  # ANTES DE LIGAR QUALQUER UM DOS DOIS, leia docs/wiki/Remote-Access.md. O
+  # resumo: com a porta presa em 127.0.0.1, REQUIRE_LOGIN=false e aceitavel
+  # porque so a sua maquina alcanca. No instante em que um tunel sobe, esse
+  # raciocinio se inverte -- e o proprio painel do gateway avisa isso em
+  # vermelho ("Change the default dashboard password before activating the
+  # tunnel").
+  litellmrtk-tunel:
+    # Um container em vez do botao do gateway: o botao instala o cloudflared
+    # DENTRO do container do gateway, que e efemero -- recriar a stack desfaz a
+    # instalacao. Aqui o tunel e uma peca declarada, que sobe e desce com o
+    # resto e deixa rastro no compose.
+    image: cloudflare/cloudflared:latest
+    container_name: litellmrtk-tunel
+    hostname: litellmrtk-tunel
+    profiles: ["tunel"]
+    restart: unless-stopped
+    # Sem TUNNEL_TOKEN: quick tunnel, URL aleatoria a cada subida, zero
+    # configuracao, boa para uma demonstracao. Com TUNNEL_TOKEN de um tunel
+    # nomeado: URL estavel e a possibilidade de por o Cloudflare Access na
+    # frente, que autentica ANTES de a requisicao chegar no gateway.
+    command: >-
+      tunnel --no-autoupdate
+      ${TUNNEL_TOKEN:+run --token ${TUNNEL_TOKEN}}
+      ${TUNNEL_TOKEN:---url http://litellmrtk-router:4000}
+    networks:
+      - litellmrtksync-net
+    depends_on:
+      - litellmrtk-router
+
+  litellmrtk-tailnet:
+    # Diferenca que decide a escolha: o tunel da uma URL que QUALQUER UM com o
+    # endereco alcanca; a tailnet so admite dispositivo que voce cadastrou.
+    # Para um painel que le credenciais, a segunda e quase sempre a certa.
+    image: tailscale/tailscale:latest
+    container_name: litellmrtk-tailnet
+    hostname: litellmrtk
+    profiles: ["tailnet"]
+    restart: unless-stopped
+    environment:
+      # Gere em https://login.tailscale.com/admin/settings/keys (chave efemera,
+      # para o no sumir sozinho quando o container morrer). Sem `:?` de
+      # proposito: o compose interpola tudo ANTES de filtrar por perfil, entao
+      # exigir aqui cobraria a chave ate de quem nunca vai usar este perfil.
+      # Quem cobra e o proprio container, na partida, e so quando o perfil sobe.
+      - TS_AUTHKEY=${TS_AUTHKEY:-}
+      - TS_STATE_DIR=/var/lib/tailscale
+      - TS_USERSPACE=true
+      # Publica o painel e o gateway na tailnet, cada um na sua porta.
+      - TS_SERVE_CONFIG=/config/serve.json
+    volumes:
+      - litellmrtk_tailnet:/var/lib/tailscale
+    networks:
+      - litellmrtksync-net
+
 volumes:
+  litellmrtk_tailnet:
   litellmrtksync_db:
   litellmrtksync_data:
 

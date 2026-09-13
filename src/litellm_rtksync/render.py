@@ -23,7 +23,7 @@ from .i18n import DEFAULT_LANGUAGE, LANGUAGES, normalize_language, translate
 # Icone da aba, embutido como data URI: /favicon.ico responde 401 atras do
 # Basic Auth, entao um arquivo servido deixaria a aba sem icone ate o
 # operador autenticar -- e a pagina de erro nunca teria icone nenhum.
-FAVICON = "data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'><rect width='32' height='32' rx='7' fill='%233d0a0a'/><g fill='none' stroke='%23ffffff' stroke-width='2.6' stroke-linecap='round' stroke-linejoin='round'><path d='M6 22 a10 10 0 0 1 20 0'/><path d='M16 22 L21.5 13.5'/><circle cx='16' cy='22' r='1.6' fill='%23ffffff'/></g></svg>"
+FAVICON = "data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'><rect width='32' height='32' rx='7' fill='%237d1414'/><g transform='translate(6 6) scale(1.25)' fill='%23ffffff'><path d='M8 4a.5.5 0 0 1 .5.5V6a.5.5 0 0 1-1 0V4.5A.5.5 0 0 1 8 4M3.732 5.732a.5.5 0 0 1 .707 0l.915.914a.5.5 0 1 1-.708.708l-.914-.915a.5.5 0 0 1 0-.707M2 10a.5.5 0 0 1 .5-.5h1.586a.5.5 0 0 1 0 1H2.5A.5.5 0 0 1 2 10m9.5 0a.5.5 0 0 1 .5-.5h1.5a.5.5 0 0 1 0 1H12a.5.5 0 0 1-.5-.5m.754-4.246a.39.39 0 0 0-.527-.02L7.547 9.31a.91.91 0 1 0 1.302 1.258l3.434-4.297a.39.39 0 0 0-.029-.518z'/><path fill-rule='evenodd' d='M0 10a8 8 0 1 1 15.547 2.661c-.442 1.253-1.845 1.602-2.932 1.25C11.309 13.488 9.475 13 8 13c-1.474 0-3.31.488-4.615.911-1.087.352-2.49.003-2.932-1.25A8 8 0 0 1 0 10m8-7a7 7 0 0 0-6.603 9.329c.203.575.923.876 1.68.63C4.397 12.533 6.358 12 8 12s3.604.532 4.923.96c.757.245 1.477-.056 1.68-.631A7 7 0 0 0 8 3'/></g></svg>"
 
 BOOTSTRAP_CSS = "https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css"
 BOOTSTRAP_ICONS = "https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.3/font/bootstrap-icons.min.css"
@@ -82,10 +82,24 @@ def format_duration(seconds: Optional[int], lang: str = DEFAULT_LANGUAGE) -> str
 
 
 def format_timestamp(value: Optional[str]) -> str:
-    """Normaliza um timestamp ISO para exibição."""
+    """Normaliza um timestamp ISO para exibição.
+
+    Troca APENAS o "T" que separa data de hora, e não todo "T" da string. A
+    versão anterior fazia `.replace("T", " ")` no texto inteiro, o que a tornava
+    destrutiva ao ser aplicada duas vezes: a primeira passada produzia
+    "2026-09-13 19:08:48 UTC", e a segunda comia o "T" de "UTC" e escrevia
+    "19:08:48 U C" na tela. Um defeito que só aparece quando alguém formata um
+    valor já formatado -- e isso é fácil de acontecer sem ninguém notar.
+    """
     if not value:
         return "—"
-    return str(value).replace("T", " ").replace("Z", " UTC")
+    texto = str(value)
+    if texto.endswith("Z"):
+        texto = texto[:-1] + " UTC"
+    # O separador ISO é o "T" na posição 10 (AAAA-MM-DDTHH:MM:SS).
+    if len(texto) > 10 and texto[10] == "T":
+        texto = texto[:10] + " " + texto[11:]
+    return texto
 
 
 def format_timestamp_curto(value: Optional[str]) -> str:
@@ -311,7 +325,7 @@ def render_flash(flash: Optional[Dict[str, str]]) -> str:
         "info": "bi-info-circle-fill",
     }.get(tone, "bi-info-circle-fill")
     return f"""
-      <div class="alert alert-{esc(tone)} d-flex align-items-center gap-2" role="status">
+      <div class="alert alert-{esc(tone)} d-flex align-items-center gap-2" role="status" data-aviso>
         <i class="bi {icon}" aria-hidden="true"></i>
         <div>{esc(flash.get("message", ""))}</div>
       </div>"""
@@ -436,6 +450,20 @@ def render_key_details(key: Any, modal_id: str, refresh_margin: int, lang: str,
     return render_detail_modal(modal_id, dados["alias"], linhas, lang, extra)
 
 
+def render_key_issued(key: Any, lang: str) -> str:
+    """Quando a chave foi emitida -- o unico carimbo de tempo que ela tem.
+
+    Chave virtual nao se renova: ela nasce com prazo e vence. A coluna existe
+    para casar com a dos irmaos, e o que cabe nela aqui e a emissao.
+    """
+    carimbo = getattr(key, "created_at", None)
+    if not carimbo:
+        return f'<span class="text-secondary">{esc(translate("table.never_refreshed", lang))}</span>'
+    icone = '<i class="bi bi-clock me-1 text-secondary" aria-hidden="true"></i>'
+    return f'{icone}<span class="font-monospace">{esc(format_timestamp_curto(carimbo))}</span>'
+
+
+
 def render_keys_table(keys: List[Any], refresh_margin: int, lang: str,
                       team_aliases: Optional[Dict[str, str]] = None) -> str:
     """Chaves virtuais emitidas pelo proxy, uma por linha."""
@@ -457,11 +485,14 @@ def render_keys_table(keys: List[Any], refresh_margin: int, lang: str,
         # identificação é o modelo, para que a máscara valha em toda saída.
         rows.append(f"""
             <tr>
-              <td class="fw-semibold font-monospace">{esc(key.alias)}</td>
               <td>{team_cell}</td>
+              <td class="fw-semibold font-monospace">{esc(key.alias)}</td>
+              <td class="text-nowrap">
+                <i class="bi bi-key me-1 text-secondary" aria-hidden="true"></i>{esc(translate("type.virtual_key", lang))}
+              </td>
               <td>{health_badge(key.health_status(refresh_margin), lang)}</td>
               <td class="text-nowrap">{render_remaining(key.remaining_seconds, lang)}</td>
-              <td class="text-end font-monospace">{esc(f"{key.spend:.4f}")}</td>
+              <td class="text-nowrap small">{render_key_issued(key, lang)}</td>
               <td class="text-end">{detail_button(modal_id, lang)}</td>
             </tr>""")
         detalhes.append(render_key_details(key, modal_id, refresh_margin, lang, team_aliases))
@@ -470,16 +501,18 @@ def render_keys_table(keys: List[Any], refresh_margin: int, lang: str,
         <div class="table-responsive">
           <table class="table table-dark table-hover align-middle mb-0 tabela-dominio">
             <colgroup>
-              <col class="c-nome"><col class="c-chip"><col class="c-status">
-              <col class="c-validade"><col class="c-numero"><col class="c-detalhe">
+              <col class="c-provedor"><col class="c-nome"><col class="c-tipo">
+              <col class="c-status"><col class="c-validade"><col class="c-renovacao">
+              <col class="c-detalhe">
             </colgroup>
             <thead>
               <tr>
-                <th scope="col">{esc(translate("table.alias", lang))}</th>
-                <th scope="col">{esc(translate("table.team", lang))}</th>
+                <th scope="col">{esc(translate("table.provider", lang))}</th>
+                <th scope="col">{esc(translate("table.name", lang))}</th>
+                <th scope="col">{esc(translate("table.type", lang))}</th>
                 <th scope="col">{esc(translate("table.status", lang))}</th>
                 <th scope="col">{esc(translate("table.remaining", lang))}</th>
-                <th scope="col" class="text-end">{esc(translate("table.spend", lang))}</th>
+                <th scope="col">{esc(translate("table.last_refresh", lang))}</th>
                 <th scope="col" class="text-end">{esc(translate("table.details", lang))}</th>
               </tr>
             </thead>
@@ -704,6 +737,11 @@ def render_cron_card(cron: Dict[str, Any], lang: str) -> str:
               <i class="bi bi-list-columns-reverse me-1" aria-hidden="true"></i>Logs
               {'<span class="badge text-bg-danger ms-1">!</span>' if failed else ""}
             </button>
+            <form method="post" action="/acoes/cron" class="m-0">
+              <button class="btn btn-outline-light btn-sm" type="submit">
+                <i class="bi bi-play-fill me-1" aria-hidden="true"></i>{esc(translate("cron.run_now", lang))}
+              </button>
+            </form>
           </div>
         </div>
         <div class="card-body">
@@ -711,12 +749,12 @@ def render_cron_card(cron: Dict[str, Any], lang: str) -> str:
             <i class="bi {state_icon}" aria-hidden="true"></i><span>{esc(state_text)}</span>
           </p>
           <dl class="row mb-0 small">
-            <dt class="col-5 text-secondary fw-normal">{esc(translate("cron.next_run", lang))}</dt>
-            <dd class="col-7 text-end font-monospace">{esc(format_timestamp(cron.get("nextRunAt")))}</dd>
-            <dt class="col-5 text-secondary fw-normal">{esc(translate("cron.total_findings", lang))}</dt>
-            <dd class="col-7 text-end font-monospace">{esc(cron.get("totalFindings", 0))}</dd>
-            <dt class="col-5 text-secondary fw-normal mt-2">{esc(translate("cron.last_result", lang))}</dt>
-            <dd class="col-7 text-end font-monospace small mb-0 mt-2 {'text-danger' if failed else ''}">
+            <dt class="col-4 text-secondary fw-normal">{esc(translate("cron.next_run", lang))}</dt>
+            <dd class="col-8 text-end font-monospace text-nowrap">{esc(format_timestamp(cron.get("nextRunAt")))}</dd>
+            <dt class="col-4 text-secondary fw-normal">{esc(translate("cron.total_findings", lang))}</dt>
+            <dd class="col-8 text-end font-monospace">{esc(cron.get("totalFindings", 0))}</dd>
+            <dt class="col-4 text-secondary fw-normal mt-2">{esc(translate("cron.last_result", lang))}</dt>
+            <dd class="col-8 text-end font-monospace small mb-0 mt-2 {'text-danger' if failed else ''}">
               {esc(translate("cron.result_line", lang,
                              inspected=last.get("totalInspected", 0),
                              findings=last.get("findingsCount", 0),
@@ -963,24 +1001,14 @@ def render_dashboard(
       </div>
       <div class="barra-acoes">
         {render_language_switcher(lang)}
-        <form method="post" action="/acoes/atualizar" class="m-0 d-inline">
-          <button class="btn btn-outline-light btn-sm" type="submit"
-                  title="{esc(translate("action.refresh_title", lang))}">
-            <i class="bi bi-arrow-clockwise me-1" aria-hidden="true"></i>{esc(translate("action.refresh", lang))}
-          </button>
-        </form>
-        <button class="btn btn-outline-light btn-sm" data-bs-toggle="modal" data-bs-target="#modalCredenciais">
-          <i class="bi bi-key me-1" aria-hidden="true"></i>{esc(translate("action.access", lang))}
-        </button>
-        <form method="post" action="/logout" class="m-0">
-          <button class="btn btn-outline-light btn-sm" type="submit"
-                  title="{esc(translate("auth.logout", lang))}">
-            <i class="bi bi-box-arrow-right" aria-hidden="true"></i>
-          </button>
-        </form>
         <form method="post" action="/acoes/cron" class="m-0">
           <button class="btn btn-primary btn-sm" type="submit">
             <i class="bi bi-arrow-repeat me-1" aria-hidden="true"></i>{esc(translate("action.sync_now", lang))}
+          </button>
+        </form>
+        <form method="post" action="/logout" class="m-0">
+          <button class="btn btn-outline-light btn-sm" type="submit">
+            <i class="bi bi-box-arrow-right me-1" aria-hidden="true"></i>{esc(translate("auth.logout", lang))}
           </button>
         </form>
       </div>
@@ -1028,6 +1056,10 @@ def render_dashboard(
       <span>
         <i class="bi bi-person-circle me-1" aria-hidden="true"></i>{esc(translate("footer.signed_in", lang))}
         <span class="font-monospace">{esc(current_user)}</span>
+        <button class="btn btn-link btn-sm p-0 ms-2 align-baseline text-secondary"
+                data-bs-toggle="modal" data-bs-target="#modalCredenciais">
+          <i class="bi bi-key me-1" aria-hidden="true"></i>{esc(translate("action.change_credentials", lang))}
+        </button>
       </span>
       <span>
         <i class="bi bi-clock-history me-1" aria-hidden="true"></i>{esc(translate("footer.generated", lang))}
@@ -1078,6 +1110,21 @@ def render_dashboard(
                .prop('disabled', true)
                .find('i').attr('class', 'bi bi-hourglass-split me-1');
       }});
+
+      // O aviso da ultima acao viaja na querystring (POST-Redirect-GET, para o
+      // F5 nao repetir a acao). O efeito colateral e que ele fica: a URL guarda
+      // o texto, e recarregar traz de volta uma mensagem de algo que ja
+      // aconteceu. Assim que a pagina desenha, a querystring e limpa do
+      // historico -- sem nova requisicao -- e o aviso some sozinho.
+      var $aviso = $('[data-aviso]');
+      if ($aviso.length) {{
+        if (window.history.replaceState) {{
+          window.history.replaceState({{}}, document.title, window.location.pathname);
+        }}
+        window.setTimeout(function () {{
+          $aviso.fadeOut(400, function () {{ $(this).remove(); }});
+        }}, 6000);
+      }}
     }});
   </script>
 </body>

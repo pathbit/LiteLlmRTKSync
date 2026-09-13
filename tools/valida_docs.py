@@ -45,6 +45,12 @@ RX_COMANDO_DE_TERCEIRO = re.compile(
 FLAGS_DE_TERCEIROS = {
     "--advertise-exit-node", "--exit-node",   # tailscale
     "--help", "--version",                    # universais
+    # docker compose: a doc de acesso remoto explica como subir os servicos
+    # opcionais de tunel e tailnet, e essas flags sao do compose, nao do
+    # CLI deste produto.
+    "--profile", "--env-file", "--remove-orphans", "--wait",
+    "--wait-timeout", "--force-recreate", "--no-autoupdate", "--url",
+    "--token", "-d", "-f",
 }
 
 # Rotas do GATEWAY, nao do painel. A pagina de saida de rede cita a API do

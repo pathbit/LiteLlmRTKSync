@@ -251,12 +251,24 @@ class TestPainel(unittest.TestCase):
 
     MESMA_ORIGEM = {"Origin": BASE, "Sec-Fetch-Site": "same-origin"}
 
-    def test_the_panel_serves_the_same_five_actions_as_its_siblings(self):
-        """Uma ação que some da tela não quebra nada — só deixa de existir."""
+    def test_the_panel_serves_the_same_actions_as_its_siblings(self):
+        """A barra do topo tem três controles nos três painéis, nesta ordem.
+
+        `/acoes/atualizar` saiu: recarregar a página e rodar o ciclo viraram um
+        botão só ("Sync now"), porque dois botões vizinhos que parecem fazer a
+        mesma coisa fazem o operador escolher no escuro. O modal de credenciais
+        continua servido, mas a partir do rodapé — trocar a própria senha não é
+        uma ação de sincronização e não pertence àquela barra.
+        """
         _, corpo, _ = self.pega("/")
-        for acao in ("/acoes/atualizar", "/acoes/idioma", "/acoes/testar-gateway",
-                     "/acoes/cron", "/acoes/credenciais"):
+        for acao in ("/acoes/idioma", "/acoes/cron", "/logout",
+                     "/acoes/testar-gateway", "/acoes/credenciais"):
             self.assertIn(f'action="{acao}"', corpo, f"{acao} não está na página")
+        self.assertNotIn(
+            'action="/acoes/atualizar"',
+            corpo,
+            "recarregar virou parte do próprio Sync now",
+        )
 
     def test_there_is_only_one_route_that_runs_a_cycle(self):
         """`/acoes/sincronizar` foi unificada em `/acoes/cron`, como nos irmãos.

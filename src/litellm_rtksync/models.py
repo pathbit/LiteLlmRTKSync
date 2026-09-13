@@ -70,6 +70,16 @@ class VirtualKey:
         return int((instante - datetime.now(timezone.utc)).total_seconds())
 
     @property
+    def created_at(self) -> Optional[str]:
+        """Quando a chave foi emitida.
+
+        Chave virtual nao se renova -- nasce com prazo e vence -- entao este e o
+        unico carimbo de tempo que ela tem. E o que a coluna "ultima renovacao"
+        mostra aqui, para a tabela ter as mesmas sete colunas dos irmaos.
+        """
+        return self.raw.get("created_at") or self.raw.get("created_by_at")
+
+    @property
     def blocked(self) -> bool:
         return bool(self.raw.get("blocked"))
 
