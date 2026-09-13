@@ -10,9 +10,12 @@
 name: litellmrtksync-test
 
 services:
-  postgres:
+  litellmrtk-db:
     image: postgres:16-alpine
     container_name: litellmrtk-test-db
+    hostname: litellmrtk-db
+    networks:
+      - litellmrtksync-test-net
     restart: unless-stopped
     environment:
       - POSTGRES_USER=litellm
@@ -25,9 +28,12 @@ services:
       timeout: 5s
       retries: 20
 
-  litellm:
+  litellmrtk-router:
     image: ghcr.io/berriai/litellm:main-latest
     container_name: litellmrtk-test-router
+    hostname: litellmrtk-router
+    networks:
+      - litellmrtksync-test-net
     restart: unless-stopped
     ports:
       # Porta interna 4000 (padrao do LiteLLM); publicada em 8083 no host.
@@ -35,7 +41,7 @@ services:
       # 8083 LiteLLM.
       - "127.0.0.1:8083:4000"
     environment:
-      - DATABASE_URL=postgresql://litellm:${POSTGRES_PASSWORD:?defina POSTGRES_PASSWORD no .env}@postgres:5432/litellm
+      - DATABASE_URL=postgresql://litellm:${POSTGRES_PASSWORD:?defina POSTGRES_PASSWORD no .env}@litellmrtk-db:5432/litellm
       - LITELLM_MASTER_KEY=${LITELLM_MASTER_KEY:?defina LITELLM_MASTER_KEY no .env}
       - LITELLM_SALT_KEY=${LITELLM_SALT_KEY:?defina LITELLM_SALT_KEY no .env}
       - STORE_MODEL_IN_DB=True
@@ -45,7 +51,7 @@ services:
       - UI_USERNAME=${DASHBOARD_USER:-admin}
       - UI_PASSWORD=${DASHBOARD_PASSWORD:?defina DASHBOARD_PASSWORD no .env}
     depends_on:
-      postgres:
+      litellmrtk-db:
         condition: service_healthy
     healthcheck:
       test:
@@ -58,16 +64,19 @@ services:
       # As migrações do Prisma rodam no primeiro boot e levam um tempo.
       start_period: 90s
 
-  litellmrtksync:
+  litellmrtk-sync:
     build: .
     image: ghcr.io/pathbit/litellmrtksync:local
     container_name: litellmrtk-test-sync
+    hostname: litellmrtk-sync
+    networks:
+      - litellmrtksync-test-net
     restart: unless-stopped
     ports:
       # Porta interna 9090, igual nos três sincronizadores; publicada em 9093.
       - "127.0.0.1:9093:9090"
     environment:
-      - LITELLM_URL=http://litellm:4000
+      - LITELLM_URL=http://litellmrtk-router:4000
       - LITELLM_MASTER_KEY=${LITELLM_MASTER_KEY:?defina LITELLM_MASTER_KEY no .env}
       - DATA_DIR=/app/data
       - WEB_PORT=9090
@@ -85,7 +94,7 @@ services:
     volumes:
       - litellmrtksync_data:/app/data
     depends_on:
-      litellm:
+      litellmrtk-router:
         condition: service_healthy
     healthcheck:
       test: ["CMD", "/opt/venv/bin/python3", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:9090/healthz', timeout=3)"]
@@ -96,3 +105,13 @@ services:
 
 volumes:
   litellmrtksync_data:
+
+networks:
+  litellmrtksync-test-net:
+    # Rede propria, com nome explicito, pelo mesmo motivo do
+    # docker-compose.example.yml: na rede default duas stacks no mesmo daemon
+    # resolvem o mesmo nome curto e nao da para saber a qual gateway o
+    # sincronizador se conectou. O nome e o da STACK DE TESTE, e nao
+    # litellmrtksync-net: as duas usam os mesmos hostnames internos, e dividir
+    # a rede traria de volta exatamente a colisao que se quis eliminar.
+    name: litellmrtksync-test-net

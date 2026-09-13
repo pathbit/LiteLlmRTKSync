@@ -88,6 +88,22 @@ def format_timestamp(value: Optional[str]) -> str:
     return str(value).replace("T", " ").replace("Z", " UTC")
 
 
+def format_timestamp_curto(value: Optional[str]) -> str:
+    """Data enxuta para a celula da tabela: dia/mes e hora, sem ano nem segundos.
+
+    A forma completa ("2026-09-13 18:40:52 UTC") nao cabe na coluna e era
+    cortada no meio, o que deixava a informacao pior do que util. O carimbo
+    inteiro continua no modal de detalhe, a um clique da linha.
+    """
+    if not value:
+        return "—"
+    try:
+        momento = datetime.fromisoformat(str(value).replace("Z", "+00:00"))
+    except (ValueError, TypeError):
+        return format_timestamp(value)
+    return momento.strftime("%d/%m %H:%M")
+
+
 def render_notice_page(title: str, body: str, link_label: str = "") -> bytes:
     """Pagina autonoma para respostas fora do painel autenticado.
 
@@ -118,6 +134,73 @@ def render_notice_page(title: str, body: str, link_label: str = "") -> bytes:
       {link}
     </div>
   </div>
+</body>
+</html>""".encode("utf-8")
+
+
+def render_login_page(lang: str = DEFAULT_LANGUAGE, erro: str = "") -> bytes:
+    """Formulario de entrada, com a mesma casca e a mesma paleta do painel.
+
+    Existe porque o dialogo do Basic Auth e uma janela do NAVEGADOR: nao se
+    traduz, nao se estiliza, nao oferece logout e nao e HTML -- qualquer
+    ferramenta que dirija um navegador para no dialogo, porque nao ha nada na
+    pagina para preencher. Esta pagina resolve os quatro de uma vez.
+    """
+    lang = normalize_language(lang)
+    aviso = (
+        f'<div class="alert alert-danger d-flex align-items-center gap-2 mb-3" role="alert">'
+        f'<i class="bi bi-exclamation-octagon-fill" aria-hidden="true"></i>'
+        f'<span>{esc(erro)}</span></div>'
+        if erro
+        else ""
+    )
+    return f"""<!DOCTYPE html>
+<html lang="{esc(lang)}" data-bs-theme="dark">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="robots" content="noindex, nofollow">
+  <link rel="icon" href="{FAVICON}">
+  <title>LiteLlmRTKSync</title>
+  <link rel="stylesheet" href="{BOOTSTRAP_CSS}">
+  <link rel="stylesheet" href="{BOOTSTRAP_ICONS}">
+  <style>
+    :root {{ --bg: #6D0808; --surface: #7d1414; --line: #a32626;
+             --accent: #ffce6b; --text: #e6e8ee; }}
+    body {{ background: var(--bg); color: var(--text); font-family: {FONT_STACK}; }}
+    .card {{ background: var(--surface); border: 1px solid var(--line); }}
+    .btn-primary {{ --bs-btn-bg: var(--accent); --bs-btn-border-color: var(--accent);
+                    --bs-btn-color: var(--bg); --bs-btn-hover-bg: var(--accent);
+                    --bs-btn-hover-border-color: var(--accent); --bs-btn-hover-color: var(--bg); }}
+    .form-control {{ background: var(--bg); border-color: var(--line); color: var(--text); }}
+    .form-control:focus {{ background: var(--bg); color: var(--text);
+                           border-color: var(--accent); box-shadow: none; }}
+  </style>
+</head>
+<body class="d-flex align-items-center justify-content-center" style="min-height:100vh">
+  <main class="card" style="max-width:24rem;width:100%">
+    <div class="card-body p-4">
+      <h1 class="h5 mb-1 d-flex align-items-center gap-2">
+        <i class="bi bi-shield-lock" aria-hidden="true"></i>LiteLlmRTKSync
+      </h1>
+      <p class="text-secondary small mb-4">{esc(translate("auth.login_intro", lang))}</p>
+      {aviso}
+      <form method="post" action="/login">
+        <div class="mb-3">
+          <label class="form-label small" for="usuario">{esc(translate("auth.user", lang))}</label>
+          <input class="form-control" id="usuario" name="usuario" autocomplete="username" autofocus required>
+        </div>
+        <div class="mb-4">
+          <label class="form-label small" for="senha">{esc(translate("auth.password", lang))}</label>
+          <input class="form-control" id="senha" name="senha" type="password"
+                 autocomplete="current-password" required>
+        </div>
+        <button class="btn btn-primary w-100" type="submit">
+          <i class="bi bi-box-arrow-in-right me-1" aria-hidden="true"></i>{esc(translate("auth.enter", lang))}
+        </button>
+      </form>
+    </div>
+  </main>
 </body>
 </html>""".encode("utf-8")
 
@@ -597,12 +680,12 @@ def render_cron_card(cron: Dict[str, Any], lang: str) -> str:
             <i class="bi {state_icon}" aria-hidden="true"></i><span>{esc(state_text)}</span>
           </p>
           <dl class="row mb-0 small">
-            <dt class="col-6 text-secondary fw-normal">{esc(translate("cron.next_run", lang))}</dt>
-            <dd class="col-6 text-end font-monospace">{esc(format_timestamp(cron.get("nextRunAt")))}</dd>
-            <dt class="col-6 text-secondary fw-normal">{esc(translate("cron.total_findings", lang))}</dt>
-            <dd class="col-6 text-end font-monospace">{esc(cron.get("totalFindings", 0))}</dd>
-            <dt class="col-12 text-secondary fw-normal mt-2">{esc(translate("cron.last_result", lang))}</dt>
-            <dd class="col-12 font-monospace small mb-0 {'text-danger' if failed else ''}">
+            <dt class="col-5 text-secondary fw-normal">{esc(translate("cron.next_run", lang))}</dt>
+            <dd class="col-7 text-end font-monospace">{esc(format_timestamp(cron.get("nextRunAt")))}</dd>
+            <dt class="col-5 text-secondary fw-normal">{esc(translate("cron.total_findings", lang))}</dt>
+            <dd class="col-7 text-end font-monospace">{esc(cron.get("totalFindings", 0))}</dd>
+            <dt class="col-5 text-secondary fw-normal mt-2">{esc(translate("cron.last_result", lang))}</dt>
+            <dd class="col-7 text-end font-monospace small mb-0 mt-2 {'text-danger' if failed else ''}">
               {esc(translate("cron.result_line", lang,
                              inspected=last.get("totalInspected", 0),
                              findings=last.get("findingsCount", 0),
@@ -775,13 +858,21 @@ def render_dashboard(
        a do nome, empurrando o conteudo util para fora da tela. */
     .tabela-dominio {{ table-layout: fixed; }}
     .tabela-dominio th, .tabela-dominio td {{ padding: .6rem .5rem; vertical-align: top; }}
+    /* Com table-layout:fixed a largura da coluna e lei, e text-nowrap
+       (white-space:nowrap!important) sem overflow:hidden nao corta nem quebra:
+       o excesso se desenha POR CIMA da coluna vizinha. Foi assim que a validade
+       apareceu escrita sobre a data de renovacao. O corte com reticencias
+       mantem a linha legivel; o texto inteiro fica no botao (i) da linha. */
+    .tabela-dominio td, .tabela-dominio th {{ overflow: hidden; text-overflow: ellipsis; }}
+    /* O cabecalho nao pode quebrar no meio da palavra ("Detalhe" / "s"). */
+    .tabela-dominio th {{ white-space: nowrap; }}
     .tabela-dominio col.c-nome       {{ width: auto; }}
     .tabela-dominio col.c-chip       {{ width: 12rem; }}
     .tabela-dominio col.c-credencial {{ width: 14rem; }}
-    .tabela-dominio col.c-status     {{ width: 8rem; }}
-    .tabela-dominio col.c-validade   {{ width: 10rem; }}
+    .tabela-dominio col.c-status     {{ width: 9.5rem; }}
+    .tabela-dominio col.c-validade   {{ width: 11rem; }}
     .tabela-dominio col.c-numero     {{ width: 7rem; }}
-    .tabela-dominio col.c-detalhe    {{ width: 5rem; }}
+    .tabela-dominio col.c-detalhe    {{ width: 5.5rem; }}
     /* O apelido da chave e o nome do modelo sao identificadores longos e sem
        espaco: sem isto eles estouram a celula em vez de quebrar. */
     .tabela-dominio td, .tabela-dominio .provider-chip {{ overflow-wrap: anywhere; }}
@@ -850,6 +941,12 @@ def render_dashboard(
         <button class="btn btn-outline-light btn-sm" data-bs-toggle="modal" data-bs-target="#modalCredenciais">
           <i class="bi bi-key me-1" aria-hidden="true"></i>{esc(translate("action.access", lang))}
         </button>
+        <form method="post" action="/logout" class="m-0">
+          <button class="btn btn-outline-light btn-sm" type="submit"
+                  title="{esc(translate("auth.logout", lang))}">
+            <i class="bi bi-box-arrow-right" aria-hidden="true"></i>
+          </button>
+        </form>
         <form method="post" action="/acoes/cron" class="m-0">
           <button class="btn btn-primary btn-sm" type="submit">
             <i class="bi bi-arrow-repeat me-1" aria-hidden="true"></i>{esc(translate("action.sync_now", lang))}

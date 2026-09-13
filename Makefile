@@ -38,8 +38,12 @@ status:
 docker-build:
 	docker build -t litellmrtksync:latest -t ghcr.io/pathbit/litellmrtksync:latest .
 
+# 9093 e a porta de host deste painel (9091 e do 9RTKSync, 9092 do OminiRTkSync).
+# Publicar na 9092 ocupava a porta do irmao e mostrava este painel no endereco
+# que a documentacao atribui ao outro produto. Comentario FORA da receita: linha
+# iniciada por # dentro de um alvo vai para o shell e aparece na saida.
 docker-run:
-	docker run --rm -it --name litellmrtk-sync -p 9092:9090 litellmrtksync:latest
+	docker run --rm -it --name litellmrtk-sync -p 127.0.0.1:9093:9090 litellmrtksync:latest
 
 clean:
 	find . -type d -name "__pycache__" -exec rm -rf {} +

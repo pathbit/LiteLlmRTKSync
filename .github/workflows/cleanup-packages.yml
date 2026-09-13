@@ -5,7 +5,7 @@ name: Package Retention
 # Historico: a primeira versao deste arquivo nao era limpeza. Com
 # min-versions-to-keep: 0 e delete-only-untagged-versions: false ela apagava
 # TODAS as versoes e em seguida removia o proprio package via API. Quem
-# estivesse puxando ghcr.io/pathbit/litellmrtksyncatest ficava sem imagem.
+# estivesse puxando ghcr.io/pathbit/litellmrtksync:latest ficava sem imagem.
 #
 # A segunda versao corrigia isso, mas usava actions/delete-package-versions,
 # que trata cada manifesto como uma versao independente. O build e multi-arch

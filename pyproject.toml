@@ -32,3 +32,11 @@ litellm-rtksync = "litellm_rtksync.cli:main"
 
 [tool.setuptools.packages.find]
 where = ["src"]
+
+# A suite deste repositorio mora em tests/, e so ali. Sem esta linha o
+# `python3 -m pytest` varre o diretorio inteiro e tenta coletar o clone do
+# upstream em tmp/litellm -- centenas de erros de import de um projeto que nao e
+# este, e a suite daqui nem chega a rodar.
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+pythonpath = ["src"]

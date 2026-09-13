@@ -1,4 +1,7 @@
-name: litellmrtk-egress
+# Nome da stack no padrao das outras duas deste repositorio
+# (litellmrtksync-stack, litellmrtksync-test): o prefixo litellmrtk- e o dos
+# containers, nao o das stacks.
+name: litellmrtksync-egress
 
 # Bancada para testar POR ONDE o trafego sai.
 #
@@ -100,6 +103,10 @@ services:
 
 networks:
   egress:
+    # Nome explicito, como na rede da stack principal. Sem ele a rede real se
+    # chama <nome-do-projeto>_egress, e o comando que a wiki manda rodar para
+    # ligar o gateway a bancada quebra em silencio a cada renomeacao da stack.
+    name: litellmrtksync-egress-net
     ipam:
       config:
         - subnet: 172.33.0.0/24

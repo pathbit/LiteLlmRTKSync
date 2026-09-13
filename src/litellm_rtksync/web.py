@@ -30,7 +30,8 @@ from .cron import CronScheduler
 from .i18n import DEFAULT_LANGUAGE, normalize_language, translate
 from .models import ModelEntry, VirtualKey
 from .prefs import get_preference, set_preference
-from .render import render_dashboard, render_notice_page
+from . import sessao
+from .render import render_dashboard, render_login_page, render_notice_page
 
 
 def strip_markup(text: str) -> str:
@@ -112,6 +113,16 @@ class LiteLlmDashboardHandler(BaseHTTPRequestHandler):
     # -- autenticação -------------------------------------------------------
 
     def require_auth(self) -> bool:
+        # Duas portas para a mesma casa. O cookie e o que o navegador usa depois
+        # do formulario; o Basic Auth continua aceito porque e ele que faz curl,
+        # script e monitoramento funcionarem sem sessao.
+        usuario_da_sessao = sessao.usuario_da_sessao(
+            sessao.ler_do_cabecalho(self.headers.get("Cookie", ""))
+        )
+        if usuario_da_sessao:
+            self.authenticated_user = usuario_da_sessao
+            return True
+
         header = self.headers.get("Authorization", "")
         if header.startswith("Basic "):
             try:
@@ -127,6 +138,19 @@ class LiteLlmDashboardHandler(BaseHTTPRequestHandler):
                 return True
 
         lang = self.resolve_language()
+
+        # Quem pediu HTML e um navegador: mandamos para o formulario, que e
+        # pagina nossa -- traduzida, com a cara do painel e com logout. O 401
+        # com WWW-Authenticate fica para quem NAO pediu HTML (curl, scripts,
+        # monitoramento), que e quem sabe responder a ele.
+        if "text/html" in self.headers.get("Accept", "") and urlparse(self.path).path != "/login":
+            self.send_response(HTTPStatus.FOUND)
+            self.send_header("Location", "/login")
+            self.send_header("Cache-Control", "no-store")
+            self.send_header("Content-Length", "0")
+            self.end_headers()
+            return False
+
         body = render_notice_page(
             translate("auth.required", lang),
             translate("auth.required_body", lang),
@@ -171,10 +195,56 @@ class LiteLlmDashboardHandler(BaseHTTPRequestHandler):
 
     # -- rotas --------------------------------------------------------------
 
+    def serve_login_page(self, erro: str = "") -> None:
+        """Formulario de entrada: a porta do navegador para o painel."""
+        lang = self.resolve_language()
+        body = render_login_page(lang, erro)
+        self.send_response(HTTPStatus.OK)
+        self.send_header("Content-Type", "text/html; charset=utf-8")
+        self.send_header("Content-Length", str(len(body)))
+        self.send_header("Cache-Control", "no-store")
+        self.end_headers()
+        self.write_body(body)
+
+    def handle_login(self) -> None:
+        """Valida a credencial do formulario e emite o cookie de sessao."""
+        length = int(self.headers.get("Content-Length", 0))
+        corpo = self.rfile.read(length) if length > 0 else b""
+        campos = parse_qs(corpo.decode("utf-8", "replace"))
+        usuario = (campos.get("usuario") or [""])[0]
+        senha = (campos.get("senha") or [""])[0]
+
+        if not self.settings or not self.settings.verify_credentials(usuario, senha):
+            # Mensagem unica para usuario errado e senha errada: distinguir os
+            # dois conta a quem tenta qual metade ja acertou.
+            self.serve_login_page(translate("auth.login_failed", self.resolve_language()))
+            return
+
+        self.send_response(HTTPStatus.FOUND)
+        self.send_header("Location", "/")
+        self.send_header("Set-Cookie", sessao.cabecalho_para_gravar(sessao.emitir(usuario)))
+        self.send_header("Cache-Control", "no-store")
+        self.send_header("Content-Length", "0")
+        self.end_headers()
+
+    def handle_logout(self) -> None:
+        """Apaga o cookie. O Basic Auth nao tem equivalente disso."""
+        self.send_response(HTTPStatus.FOUND)
+        self.send_header("Location", "/login")
+        self.send_header("Set-Cookie", sessao.cabecalho_para_apagar())
+        self.send_header("Cache-Control", "no-store")
+        self.send_header("Content-Length", "0")
+        self.end_headers()
+
     def do_GET(self):
         path = urlparse(self.path).path
         if path == "/healthz":
             self.serve_healthz()
+            return
+        # A pagina de login e publica por definicao: exigir sessao para exibir o
+        # formulario que cria a sessao seria um circulo fechado.
+        if path == "/login":
+            self.serve_login_page()
             return
         # Servida ANTES do require_auth de propósito: o navegador ainda está com
         # a senha antiga neste instante, e exigir autenticação aqui daria um 401
@@ -203,6 +273,14 @@ class LiteLlmDashboardHandler(BaseHTTPRequestHandler):
             self.send_error(HTTPStatus.NOT_FOUND, "Rota inexistente")
 
     def do_POST(self):
+        rota_inicial = urlparse(self.path).path
+        if rota_inicial == "/login":
+            self.handle_login()
+            return
+        if rota_inicial == "/logout":
+            self.handle_logout()
+            return
+
         if not self.require_auth():
             return
         if not self.is_same_origin():

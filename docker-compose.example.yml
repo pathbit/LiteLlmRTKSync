@@ -56,6 +56,15 @@ services:
       # a credencial que administra a instalacao inteira.
       - UI_USERNAME=${DASHBOARD_USER:-admin}
       - UI_PASSWORD=${DASHBOARD_PASSWORD:?defina DASHBOARD_PASSWORD no .env}
+      # Chaves dos provedores, para o proxy resolver `os.environ/NOME` quando um
+      # modelo ou uma credencial nomeada aponta para o ambiente em vez de gravar
+      # o segredo no banco. Vazias por padrao: quem nao usa o provedor nao
+      # precisa da variavel, e o modelo daquele provedor simplesmente nao sobe.
+      - ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY:-}
+      - GEMINI_API_KEY=${GEMINI_API_KEY:-}
+      - GROQ_API_KEY=${GROQ_API_KEY:-}
+      - MISTRAL_API_KEY=${MISTRAL_API_KEY:-}
+      - OPENROUTER_API_KEY=${OPENROUTER_API_KEY:-}
     depends_on:
       litellmrtk-db:
         condition: service_healthy
