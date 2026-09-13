@@ -8,51 +8,49 @@ and the order in which you turn things on decides whether that is safe.
 
 > **This page is about getting IN.** Sending traffic OUT through a chosen
 > address, so each account has its own source IP, is a different problem with a
-> different answer — see [Egress and Multi-Session](Egress-And-Multi-Session).
+> different answer — see [Egress Testing](Egress-Testing).
 > Tailscale appears in both pages doing two unrelated jobs.
 
 ---
 
 ## Read this before enabling anything
 
-LiteLLM has no dashboard-login flag: **every** admin route already demands the
-master key, and the inference routes demand a virtual key. What it does have is
-a single master key that opens everything.
+LiteLLM has no dashboard-login flag to switch on: **every** admin route already
+demands the master key, and the inference routes demand a virtual key. What it
+does have is a single master key that opens everything.
 
 That is **safe while the port is bound to `127.0.0.1`**, which is how every
 compose here publishes it: only your own machine can reach it, and demanding a
 password from yourself on localhost adds friction without adding safety.
 
-The moment you expose the gateway, that reasoning inverts. 9Router's dashboard says it in a yellow banner,
-and the warning applies here just the same:
+The moment you expose the gateway, that reasoning inverts. Two things make this
+sharper than it looks:
 
-> *Enable "Require login" and set a custom password before activating the tunnel.*
-
-Two things make this sharper than it looks:
-
-1. **`/v1` is a public prefix.** In `src/dashboardGuard.js`, the gateway lists its
-   own inference endpoints — `/v1`, `/v1beta`, `/api/v1`, `/codex`, `/responses` —
-   as public, because they are meant to be called by your coding tools without a
-   dashboard session. With `REQUIRE_API_KEY=false` and the gateway on a public URL,
-   **anyone who learns the URL can spend your accounts**.
-2. **The gateway's admin routes fall open too.** Its `/api/settings`, `/api/keys`,
-   `/api/providers` and the rest of the gateway's admin surface are protected
-   *only when `requireLogin` is on*.
-   With it off, an exposed gateway hands over its own configuration.
+1. **The master key is the entire keyring.** It issues virtual keys, reads every
+   team, budget and model, and registers new ones. So it stays on the host, and
+   every tool gets a virtual key of its own — a virtual key you can revoke is the
+   difference between an incident and a rotation.
+2. **The proxy's own UI falls back to the master key.** With `UI_USERNAME` and
+   `UI_PASSWORD` unset, LiteLLM's login screen accepts `LITELLM_MASTER_KEY` as
+   the password — so to look at a dashboard the operator types the credential
+   that administers the whole installation, and on a public URL that credential
+   is being typed into a form anyone can reach. The composes here set both
+   variables for exactly this reason.
 
 So the order is not a preference:
 
 ```
 1. a LITELLM_MASTER_KEY that is long and random — not a word you chose
-2. a virtual key per tool, so the master key never leaves the host
-3. only then, the tunnel or Tailscale
+2. UI_USERNAME and UI_PASSWORD set, so the UI never accepts the master key
+3. a virtual key per tool, so the master key never leaves the host
+4. only then, the tunnel or Tailscale
 ```
 
 ---
 
 ## Option 1 — Cloudflare tunnel (no built-in button here)
 
-OmniRoute has no tunnel button of its own — that is a 9Router feature. To get
+LiteLLM has no tunnel button of its own — that is a 9Router feature. To get
 the same result, run `cloudflared` yourself against the published port:
 
 ```bash
@@ -71,10 +69,9 @@ do not control, and you accept that the address is public to whoever has it.
   internet and your accounts is the master key and the virtual keys.
 - The address changes every time the tunnel is re-enabled, unless you bring your
   own named Cloudflare tunnel.
-- The dashboard blocks the button while login is off — but that gate lives in the
-  screen. The gateway's own `POST /api/tunnel/enable` does not re-check it, so a script or an
-  extension can enable the tunnel while login is still off. Set the two flags
-  first and the question does not arise.
+- Nothing checks the ordering above for you. Because the tunnel is a command you
+  run yourself, no screen will refuse to open it while the master key is weak or
+  the UI credentials are unset. Set them first and the question does not arise.
 
 ---
 
@@ -87,7 +84,8 @@ Your machine joins your private tailnet and the gateway becomes reachable at a
 reach the gateway — the address is not public, and there is nothing for a
 stranger to find.
 
-**Setting it up by hand**, which is also how you do it for OmniRoute and LiteLLM:
+**Setting it up by hand**, which is the only way here — there is no button in
+LiteLLM, and none in this synchronizer's panel either:
 
 ```bash
 # 1. On the host that runs the gateway
@@ -119,10 +117,10 @@ any device in the tailnet, and the address survives a change of IP.
 
 A VPS with Caddy or nginx in front, TLS terminated there, Basic Auth or mTLS on
 top. More work, and the only option that lets you put your own authentication
-layer in front of the gateway instead of relying on its flags.
+layer in front of the gateway instead of relying on its keys.
 
 Worth it when several people share one gateway and you want access logs and
-revocation per person — neither of which the gateway's own login gives you.
+revocation per person — neither of which a shared master key gives you.
 
 ---
 
@@ -150,8 +148,9 @@ curl -si https://<your-address>:9093/       | head -1     # expect connection re
 ```
 
 The panel of this synchronizer has no reason to leave the machine: it reads the
-gateway's database and shows credentials' health. Keep its port on `127.0.0.1`
-and reach it through the same tunnel or tailnet you use for everything else.
+proxy's administrative API and shows credentials' health. Keep its port on
+`127.0.0.1` and reach it through the same tunnel or tailnet you use for
+everything else.
 
 ---
 
@@ -163,47 +162,51 @@ isso é seguro.
 
 > **Esta página é sobre entrar.** Fazer o tráfego **sair** por um endereço
 > escolhido, para que cada conta tenha o seu IP, é outro problema — veja
-> [Egress and Multi-Session](Egress-And-Multi-Session). O Tailscale aparece nas
-> duas páginas fazendo trabalhos diferentes.
+> [Saída de rede](Egress-Testing). O Tailscale aparece nas duas páginas fazendo
+> trabalhos diferentes.
 
 ## Leia antes de ligar qualquer coisa
 
-O LiteLLM não tem flag de login de painel: toda rota administrativa já exige a
-master key, e as rotas de inferência exigem uma chave virtual. O que ele tem é
-uma master key única que abre tudo. Expor a porta é **seguro enquanto ela está
-presa em `127.0.0.1`** — só a sua máquina alcança, e exigir senha de si mesmo no
-localhost acrescenta atrito sem acrescentar segurança.
+O LiteLLM não tem flag de login de painel para ligar: toda rota administrativa já
+exige a master key, e as rotas de inferência exigem uma chave virtual. O que ele
+tem é uma master key única que abre tudo. Expor a porta é **seguro enquanto ela
+está presa em `127.0.0.1`** — só a sua máquina alcança, e exigir senha de si mesmo
+no localhost acrescenta atrito sem acrescentar segurança.
 
-No instante em que o gateway é exposto, o raciocínio se inverte. O painel do 9Router avisa, e o aviso
-vale igual aqui:
+No instante em que o gateway é exposto, o raciocínio se inverte. Dois detalhes
+tornam isso mais sério do que parece:
 
-> *Enable "Require login" and set a custom password before activating the tunnel.*
-
-Dois detalhes tornam isso mais sério do que parece:
-
-1. **`/v1` é prefixo público.** Em `src/dashboardGuard.js`, os endpoints de
-   inferência do gateway (`/v1`, `/v1beta`, `/api/v1`, `/codex`, `/responses`)
-   são públicos por projeto — é assim que as ferramentas de código chamam o gateway
-   sem sessão. Com `REQUIRE_API_KEY=false` e o gateway numa URL pública,
-   **qualquer um que descubra o endereço gasta as suas contas**.
-2. **As rotas administrativas do gateway também caem.** As dele — `/api/settings`,
-   `/api/keys`, `/api/providers` e afins do gateway — só são protegidas **quando `requireLogin` está
-   ligado**. Com ele desligado, um gateway exposto entrega a própria
-   configuração.
+1. **A master key é o molho de chaves inteiro.** Ela emite chaves virtuais, lê
+   todo time, orçamento e modelo, e cadastra novos. Então ela fica no host e cada
+   ferramenta recebe a sua chave virtual — uma chave virtual que se revoga é a
+   diferença entre um incidente e uma rotação.
+2. **A UI do próprio proxy aceita a master key.** Sem `UI_USERNAME` e
+   `UI_PASSWORD` definidas, a tela de login do LiteLLM aceita a
+   `LITELLM_MASTER_KEY` como senha — ou seja, para ver um painel o operador
+   digita a credencial que administra a instalação inteira, e numa URL pública
+   essa credencial está sendo digitada num formulário que qualquer um alcança. Os
+   composes daqui definem as duas variáveis exatamente por isso.
 
 A ordem, portanto, não é preferência:
 
 ```
 1. uma LITELLM_MASTER_KEY longa e aleatória — não uma palavra escolhida
-2. uma chave virtual por ferramenta, para a master key nunca sair do host
-3. só então, o túnel ou o Tailscale
+2. UI_USERNAME e UI_PASSWORD definidas, para a UI nunca aceitar a master key
+3. uma chave virtual por ferramenta, para a master key nunca sair do host
+4. só então, o túnel ou o Tailscale
 ```
 
-## Opção 1 — túnel Cloudflare (nativo do 9Router)
+## Opção 1 — túnel Cloudflare (sem botão nativo aqui)
 
-A tela **API Endpoint** tem o botão `Tunnel`. Ele registra um quick tunnel da
-Cloudflare e devolve um endereço público `https://…trycloudflare.com` que
-alcança o gateway sem abrir porta nenhuma no seu roteador.
+O LiteLLM não tem botão de túnel — isso é recurso do 9Router. Para o mesmo
+resultado, rode o `cloudflared` você mesmo contra a porta publicada:
+
+```bash
+cloudflared tunnel --url http://127.0.0.1:8083
+```
+
+Ele imprime um endereço público `https://…trycloudflare.com` que alcança o
+gateway sem abrir porta nenhuma no seu roteador.
 
 **Quando serve:** você precisa de uma URL alcançável de qualquer lugar,
 inclusive de dispositivos que você não controla, e aceita que o endereço seja
@@ -211,21 +214,22 @@ público para quem o tiver.
 
 **O que saber:** a URL é pública e não há lista de permissão — entre a internet
 e as suas contas existem apenas a master key e as chaves virtuais. O endereço
-muda a cada reativação, a menos que você use um túnel nomeado seu. E o bloqueio
-do botão enquanto o login está desligado vive **na tela**: o `POST
-/api/tunnel/enable` do gateway não reavalia a condição. Ligue as duas variáveis antes e a
-questão não se coloca.
+muda a cada reativação, a menos que você use um túnel nomeado seu. E nada
+verifica a ordem acima por você: como o túnel é um comando que você mesmo roda,
+nenhuma tela vai recusar abri-lo enquanto a master key for fraca ou as
+credenciais da UI estiverem em branco. Defina as duas antes e a questão não se
+coloca.
 
-## Opção 2 — Tailscale (nativo do 9Router, e o que preferir)
+## Opção 2 — Tailscale (o que preferir)
 
-A mesma tela tem o botão `Tailscale`, que instala e conecta o daemon. A sua
-máquina entra na sua tailnet e o gateway passa a ser alcançável num endereço
-`100.x.y.z`, ou num nome MagicDNS como `http://seu-host:20128`.
+A sua máquina entra na sua tailnet e o gateway passa a ser alcançável num
+endereço `100.x.y.z`, ou num nome MagicDNS como `http://seu-host:8083`.
 
 **Quando serve:** quase sempre. Só os dispositivos que você cadastrou alcançam o
 gateway — o endereço não é público e não há o que um estranho descubra.
 
-**Configurando à mão**, que é também como se faz no OmniRoute e no LiteLLM:
+**Configurando à mão**, que é o único jeito aqui — não há botão no LiteLLM, nem
+no painel deste sincronizador:
 
 ```bash
 # 1. No host que roda o gateway
@@ -251,10 +255,10 @@ justamente o que se queria evitar.
 
 Um VPS com Caddy ou nginx na frente, TLS terminado ali, Basic Auth ou mTLS por
 cima. Dá mais trabalho, e é a única opção que permite colocar a **sua** camada
-de autenticação na frente do gateway em vez de depender das flags dele.
+de autenticação na frente do gateway em vez de depender das chaves dele.
 
 Compensa quando várias pessoas dividem um gateway e você quer log de acesso e
-revogação por pessoa — coisas que o login do gateway não oferece.
+revogação por pessoa — coisas que uma master key compartilhada não oferece.
 
 ## Depois de expor, confira o que você expôs
 
@@ -264,6 +268,6 @@ curl -si https://<seu-endereco>/v1/models | head -1     # espera-se 401
 curl -si https://<seu-endereco>/            | head -1     # espera-se 401 ou tela de login
 ```
 
-O painel deste sincronizador não tem motivo para sair da máquina: ele lê o banco
-do gateway e mostra a saúde das credenciais. Mantenha a porta dele em
-`127.0.0.1` e alcance-o pelo mesmo túnel ou tailnet que você já usa.
+O painel deste sincronizador não tem motivo para sair da máquina: ele lê a API
+administrativa do proxy e mostra a saúde das credenciais. Mantenha a porta dele
+em `127.0.0.1` e alcance-o pelo mesmo túnel ou tailnet que você já usa.

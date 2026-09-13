@@ -21,6 +21,8 @@ import urllib.error
 import urllib.request
 
 from litellm_rtksync.config import Settings
+from litellm_rtksync.models import VirtualKey
+from litellm_rtksync.render import render_keys_table
 from litellm_rtksync.web import LiteLlmDashboardHandler, start_web
 
 PORTA = 19390
@@ -253,14 +255,26 @@ class TestPainel(unittest.TestCase):
         """Uma ação que some da tela não quebra nada — só deixa de existir."""
         _, corpo, _ = self.pega("/")
         for acao in ("/acoes/atualizar", "/acoes/idioma", "/acoes/testar-gateway",
-                     "/acoes/sincronizar", "/acoes/cron"):
+                     "/acoes/cron", "/acoes/credenciais"):
             self.assertIn(f'action="{acao}"', corpo, f"{acao} não está na página")
 
-    def test_running_a_cycle_now_answers_with_a_notice(self):
-        status, destino = self.posta("/acoes/sincronizar", cabecalhos=self.MESMA_ORIGEM)
-        self.assertEqual(status, 303)
-        self.assertIn("tom=success", destino)
-        self.assertIn("aviso=", destino)
+    def test_there_is_only_one_route_that_runs_a_cycle(self):
+        """`/acoes/sincronizar` foi unificada em `/acoes/cron`, como nos irmãos.
+
+        Duas rotas para a mesma ação davam dois botões que faziam a mesma coisa,
+        e o ciclo disparado pela primeira não entrava no histórico do agendador —
+        a tela mostrava "nenhum ciclo executado" logo depois de executar um.
+        """
+        _, corpo, _ = self.pega("/")
+        self.assertNotIn("/acoes/sincronizar", corpo)
+        status, _ = self.posta("/acoes/sincronizar", cabecalhos=self.MESMA_ORIGEM)
+        self.assertEqual(status, 404)
+
+    def test_the_header_primary_button_runs_the_scheduler_cycle(self):
+        """O botão primário do cabeçalho é o mesmo dos irmãos e aponta para o cron."""
+        _, corpo, _ = self.pega("/")
+        self.assertIn('<form method="post" action="/acoes/cron" class="m-0">\n'
+                      '          <button class="btn btn-primary btn-sm" type="submit">', corpo)
 
     def test_triggering_the_scheduler_answers_with_a_notice(self):
         status, destino = self.posta("/acoes/cron", cabecalhos=self.MESMA_ORIGEM)
@@ -269,7 +283,7 @@ class TestPainel(unittest.TestCase):
         self.assertIn("aviso=", destino)
 
     def test_refreshing_only_reloads_and_does_not_claim_a_cycle_ran(self):
-        """`/acoes/atualizar` recarrega a tela; quem inspeciona é `/acoes/sincronizar`."""
+        """`/acoes/atualizar` recarrega a tela; quem inspeciona é `/acoes/cron`."""
         status, destino = self.posta("/acoes/atualizar", cabecalhos=self.MESMA_ORIGEM)
         self.assertEqual(status, 303)
         self.assertIn("tom=info", destino)
@@ -300,6 +314,28 @@ class TestPainel(unittest.TestCase):
 
     # -- conteúdo -----------------------------------------------------------
 
+    def test_each_row_offers_a_detail_modal(self):
+        """Mesmo padrão dos irmãos: coluna estreita com (i), detalhe por extenso."""
+        _, corpo, _ = self.pega("/")
+        for alvo in ("detalhe-chave-0", "detalhe-modelo-0"):
+            self.assertIn(f'data-bs-target="#{alvo}"', corpo, f"botão (i) de {alvo} ausente")
+            self.assertIn(f'id="{alvo}"', corpo, f"modal {alvo} ausente")
+
+    def test_no_detail_modal_is_nested_inside_a_table(self):
+        """Um `<div>` dentro de `<tbody>` é HTML inválido, e o navegador o move sozinho.
+
+        O modal precisa sair DEPOIS de `</table>`; dentro dela, o Bootstrap
+        acabaria com o diálogo remontado num lugar que ninguém escreveu.
+        """
+        _, corpo, _ = self.pega("/")
+        for tabela in re.findall(r"<table\b.*?</table>", corpo, re.S):
+            self.assertNotIn("modal fade", tabela, "modal declarado dentro da tabela")
+
+    def test_the_detail_modal_never_carries_a_key_or_a_token(self):
+        _, corpo, _ = self.pega("/")
+        trecho = corpo[corpo.find('id="detalhe-chave-0"'):]
+        self.assertNotIn(TOKEN_SECRETO, trecho)
+
     def test_the_limit_finding_reaches_the_screen(self):
         _, corpo, _ = self.pega("/")
         self.assertIn("acima do teto", corpo)
@@ -307,6 +343,94 @@ class TestPainel(unittest.TestCase):
     def test_a_key_without_an_alias_is_shown_masked(self):
         _, corpo, _ = self.pega("/")
         self.assertIn("…" + TOKEN_SECRETO[-6:], corpo)
+
+    def test_the_team_column_shows_the_alias_not_the_raw_id(self):
+        # O achado de limite já citava 'time-restrito'; a tabela ao lado mostrava
+        # 't1'. Mesmo dado, dois nomes na mesma tela.
+        _, corpo, _ = self.pega("/")
+        self.assertIn("time-restrito", corpo)
+        self.assertIn('title="t1"', corpo,
+                      "o id precisa continuar acessível para casar tela e API")
+
+
+class TestRotuloDoTime(unittest.TestCase):
+    """O apelido do time na tabela de chaves.
+
+    O `/key/list` do LiteLLM devolve `team_alias` sempre nulo — medido contra o
+    proxy real, inclusive com `include_team_keys=true`. O apelido só existe no
+    `/team/list`, então a tela depende de um join que o painel precisa fazer.
+    Sem servidor: é render puro e uma chamada de método com objeto de mentira.
+    """
+
+    def chaves(self, *team_ids):
+        return [VirtualKey({"key_alias": f"k{i}", "team_id": t})
+                for i, t in enumerate(team_ids)]
+
+    def test_the_alias_replaces_the_id_when_the_map_has_it(self):
+        html = render_keys_table(self.chaves("t1"), 900, "en", {"t1": "time-restrito"})
+        self.assertIn("time-restrito", html)
+        self.assertIn('title="t1"', html)
+
+    def test_an_unknown_team_falls_back_to_the_id(self):
+        # Chave de um time que o /team/list não devolveu: mostrar o id é o certo,
+        # inventar rótulo não é.
+        html = render_keys_table(self.chaves("t-fantasma"), 900, "en", {"t1": "time-restrito"})
+        self.assertIn("t-fantasma", html)
+
+    def test_no_map_at_all_keeps_the_previous_behaviour(self):
+        html = render_keys_table(self.chaves("t1"), 900, "en")
+        self.assertIn("t1", html)
+
+    def test_a_key_without_a_team_says_so_instead_of_showing_nothing(self):
+        html = render_keys_table(self.chaves(None), 900, "en")
+        self.assertIn("Not declared", html)
+
+    def test_the_alias_also_reaches_the_detail_modal(self):
+        html = render_keys_table(self.chaves("t1"), 900, "en", {"t1": "time-restrito"})
+        modal = html[html.find('id="detalhe-chave-0"'):]
+        self.assertIn("time-restrito", modal)
+
+    def montar_estado(self, cliente):
+        """Chama `collect_dashboard_state` com um objeto mínimo no lugar do handler.
+
+        O handler é um `BaseHTTPRequestHandler`: instanciar de verdade exigiria
+        socket. O método só usa estes atributos, então basta oferecê-los.
+        """
+        motor = type("Motor", (), {"client": cliente})()
+        stub = type("Stub", (), {
+            "engine": motor,
+            "settings": None,
+            "cron_scheduler": None,
+            "run_cycle": lambda self: {"details": []},
+            "probe_proxy": lambda self: (True, 1),
+        })()
+        anterior = LiteLlmDashboardHandler.last_cycle
+        LiteLlmDashboardHandler.last_cycle = {"details": []}
+        try:
+            return LiteLlmDashboardHandler.collect_dashboard_state(stub)
+        finally:
+            LiteLlmDashboardHandler.last_cycle = anterior
+
+    def test_the_panel_builds_the_map_from_team_list(self):
+        estado = self.montar_estado(ClienteFalso())
+        self.assertEqual(estado["team_aliases"], {"t1": "time-restrito"})
+
+    def test_a_team_without_an_alias_maps_to_its_own_id(self):
+        class SemApelido(ClienteFalso):
+            def list_teams(self):
+                return [{"team_id": "t9", "team_alias": None}]
+
+        self.assertEqual(self.montar_estado(SemApelido())["team_aliases"], {"t9": "t9"})
+
+    def test_a_broken_team_route_does_not_take_the_page_down(self):
+        # Versão de proxy sem /team/list não pode apagar a tabela de chaves.
+        class RotaQuebrada(ClienteFalso):
+            def list_teams(self):
+                raise RuntimeError("/team/list indisponível")
+
+        estado = self.montar_estado(RotaQuebrada())
+        self.assertEqual(estado["team_aliases"], {})
+        self.assertTrue(estado["keys"], "as chaves precisam sobreviver à rota quebrada")
 
 
 if __name__ == "__main__":

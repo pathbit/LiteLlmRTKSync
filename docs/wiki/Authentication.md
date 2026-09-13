@@ -21,7 +21,7 @@ leaving the operator convinced of a password that does not work.
 To change it: edit the environment and recreate the container.
 
 ```bash
-docker compose up -d --force-recreate litellmrtksync
+docker compose -f docker-compose.example.yml up -d --force-recreate litellmrtk-sync
 ```
 
 ### Stored mode — `DASHBOARD_PASSWORD` is empty

@@ -10,6 +10,8 @@
 - [Remote Access](Remote-Access)
 - [Egress Testing](Egress-Testing)
 - [Rate Limit Coherence](Rate-Limit-Coherence)
+- [Test Bench](Test-Bench)
+- [Licensing and Capacity](Licensing-And-Capacity)
 - [Troubleshooting](Troubleshooting)
 - [Upstream Fixes](Upstream-Fixes)
 

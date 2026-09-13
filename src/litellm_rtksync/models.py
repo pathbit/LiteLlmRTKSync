@@ -147,6 +147,20 @@ class ModelEntry:
         return valor if isinstance(valor, dict) else {}
 
     @property
+    def model_id(self) -> str:
+        """Identificador do deployment (`model_info.id`).
+
+        É a única coisa que amarra este cadastro ao veredito do `/health`: lá o
+        modelo é identificado por `model_id`, e não por `model_name` — dois
+        deployments podem compartilhar o mesmo nome de modelo, e o LiteLLM trata
+        isso como recurso, não como erro.
+        """
+        info = self.raw.get("model_info")
+        if isinstance(info, dict) and info.get("id"):
+            return str(info["id"])
+        return ""
+
+    @property
     def provider(self) -> str:
         modelo = str(self.params.get("model") or "")
         return modelo.split("/", 1)[0] if "/" in modelo else modelo

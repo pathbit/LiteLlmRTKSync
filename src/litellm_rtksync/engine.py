@@ -18,19 +18,66 @@ ninguém verifica sozinho:
 Somente leitura: nada aqui altera chave, limite ou modelo.
 """
 
+import re
 import threading
 from datetime import datetime, timezone
 from typing import Any, Dict, List
 
 from .client import LiteLLMClient, LiteLLMError
 from .config import Settings
-from .credential_check import STATE_INVALID, STATE_RATE_LIMITED, STATE_UNREACHABLE, check_api_key
+from .credential_check import (
+    STATE_INVALID,
+    STATE_RATE_LIMITED,
+    STATE_UNREACHABLE,
+    STATE_VALID,
+    check_api_key,
+)
 from .limits import SEVERIDADE_INCOERENTE, avaliar
 from .logs import get_logger
 from .models import ModelEntry, VirtualKey, summarize
 
 PREFIXOS_DE_ERRO = {"FALHA", "ERRO", "ERROR", "FAILURE"}
 PREFIXOS_DE_AVISO = {"AVISO", "WARN", "WARNING"}
+
+# Quanto do erro do gateway cabe na tela. O `/health` devolve o traceback
+# inteiro do proxy junto com a mensagem do provedor; a primeira linha é a que
+# diz o que aconteceu, o resto é ruído para quem opera.
+LIMITE_DO_DETALHE = 160
+
+
+def _classificar_erro_do_gateway(erro: Any) -> Dict[str, str]:
+    """Traduz o erro que o `/health` do LiteLLM devolve para um estado da tela.
+
+    Conservador de propósito: só chama de RECUSADA o que o provedor disse ser
+    problema de autenticação. Qualquer outra falha vira "desconhecido", porque
+    marcar de inválida uma chave boa manda o operador trocar a credencial errada.
+    """
+    texto = str(erro or "").strip()
+    primeira_linha = texto.split("\n", 1)[0][:LIMITE_DO_DETALHE] or "sem detalhe"
+
+    # SÓ o cabeçalho entra na classificação. O `/health` cola o traceback do
+    # proxy depois da mensagem, e um traceback tem números de linha: uma falha
+    # qualquer cujo rastro passe por `File "...", line 401` viraria "chave
+    # recusada" na tela, e o operador iria trocar uma credencial que estava boa.
+    cabecalho = re.split(r"stack trace", texto, maxsplit=1, flags=re.IGNORECASE)[0]
+    minusculo = cabecalho.lower()
+
+    if ("authenticationerror" in minusculo
+            or "invalid api key" in minusculo
+            or "invalid_api_key" in minusculo
+            or "api key not valid" in minusculo
+            or "unauthorized" in minusculo
+            or "401" in minusculo):
+        return {"state": STATE_INVALID, "detail": primeira_linha}
+    if "ratelimiterror" in minusculo or "rate limit" in minusculo or "429" in minusculo:
+        return {"state": STATE_RATE_LIMITED,
+                "detail": f"o provedor limitou a checagem do gateway: {primeira_linha}"}
+    if ("apiconnectionerror" in minusculo or "connection" in minusculo
+            or "timeout" in minusculo or "timed out" in minusculo):
+        return {"state": STATE_UNREACHABLE,
+                "detail": f"o gateway não alcançou o provedor: {primeira_linha}"}
+    return {"state": "unknown",
+            "detail": f"o gateway reprovou o modelo sem dizer que é credencial: {primeira_linha}"}
 
 
 def log_msg(prefixo: str, texto: str):
@@ -145,16 +192,69 @@ class LiteLLMSyncEngine:
             resumo["errors"].append(f"{rotulo}: {e}")
             return None
 
+    def _veredito_do_gateway(self, modelos: List[ModelEntry]) -> Dict[str, Dict[str, str]]:
+        """Pergunta ao proxy o que ELE acha de cada modelo, por `model_id`.
+
+        Existe porque a pergunta não tem resposta deste lado: o `/model/info`
+        remove `api_key` da resposta, então o cadastro nunca traz o segredo nem
+        a referência de ambiente. Quem consegue testar a chave é quem a tem — o
+        proxy. Esta função traduz o `/health` dele para o mesmo vocabulário de
+        estados que a sonda local usa, para que a tela não precise saber de onde
+        veio o veredito.
+        """
+        if not modelos:
+            return {}
+        # Uma requisição só, mas ela fala com N provedores: o timeout da leitura
+        # de cadastro não serve aqui, e estourar transformaria um ciclo inteiro
+        # em erro por causa de um provedor lento.
+        limite = max(30.0, self.settings.validation_timeout * len(modelos))
+        try:
+            saude = self.client.health_check(timeout=limite)
+        except LiteLLMError as e:
+            log_msg("AVISO", f"Não foi possível obter o veredito do gateway: {e}")
+            return {}
+
+        vereditos: Dict[str, Dict[str, str]] = {}
+        for item in saude.get("healthy_endpoints") or []:
+            if isinstance(item, dict) and item.get("model_id"):
+                vereditos[str(item["model_id"])] = {
+                    "state": STATE_VALID,
+                    "detail": "o gateway chamou o provedor e a chave foi aceita",
+                }
+        for item in saude.get("unhealthy_endpoints") or []:
+            if not isinstance(item, dict) or not item.get("model_id"):
+                continue
+            vereditos[str(item["model_id"])] = _classificar_erro_do_gateway(item.get("error"))
+        return vereditos
+
     def _verificar_modelos(self, modelos: List[ModelEntry], resumo: Dict[str, Any]) -> None:
+        # Só vale a pena perguntar ao gateway se houver modelo cujo segredo este
+        # lado não enxerga — que, com o LiteLLM atual, é todo modelo.
+        invisiveis = [m for m in modelos if m.key_is_env_reference or not m.api_key]
+        vereditos = self._veredito_do_gateway(invisiveis) if invisiveis else {}
+
         for modelo in modelos:
             detalhe = {"kind": "model", "name": modelo.name, "status": "unknown", "actions": []}
             if modelo.key_is_env_reference or not modelo.api_key:
-                # A chave vive no ambiente do proxy, nao no cadastro: nao ha o
-                # que verificar daqui, e dizer "invalida" seria falso.
-                detalhe["status"] = "not_checked"
-                detalhe["actions"].append(
-                    "chave mantida no ambiente do proxy; não verificável a partir do cadastro"
-                )
+                veredito = vereditos.get(modelo.model_id)
+                if not veredito:
+                    # Sem veredito de ninguém: a chave não está no cadastro e o
+                    # gateway não respondeu por este modelo. Dizer "inválida"
+                    # seria inventar; "não verificada" é o que de fato houve.
+                    detalhe["status"] = "not_checked"
+                    detalhe["actions"].append(
+                        "chave não exposta pelo cadastro e sem veredito do gateway"
+                    )
+                    resumo["details"].append(detalhe)
+                    continue
+                detalhe["status"] = veredito["state"]
+                if veredito["state"] == STATE_INVALID:
+                    resumo["invalid_credentials"] += 1
+                    nota = f"chave RECUSADA pelo provedor ({veredito['detail']})"
+                    detalhe["actions"].append(nota)
+                    log_msg("FALHA", f"[modelo · {modelo.name}] {nota}")
+                else:
+                    detalhe["actions"].append(veredito["detail"])
                 resumo["details"].append(detalhe)
                 continue
 

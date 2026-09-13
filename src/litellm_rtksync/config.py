@@ -29,7 +29,11 @@ class Settings:
     """Tudo que o sincronizador precisa saber, e nada que ele deva adivinhar."""
 
     # -- proxy --------------------------------------------------------------
-    litellm_url: str = "http://litellm:4000"
+    # O default é o nome de serviço do compose deste repositório, e não um nome
+    # curto genérico: sem LITELLM_URL definida este valor chega à tela, no cartão
+    # de liveness, e um endereço que não resolve em rede nenhuma ensina errado
+    # quem só olhou o painel.
+    litellm_url: str = "http://litellmrtk-router:4000"
     master_key: str = ""
 
     # -- ciclo --------------------------------------------------------------
@@ -76,7 +80,7 @@ class Settings:
         senha = env_pass or ""
 
         return cls(
-            litellm_url=os.environ.get("LITELLM_URL", "http://litellm:4000").rstrip("/"),
+            litellm_url=os.environ.get("LITELLM_URL", "http://litellmrtk-router:4000").rstrip("/"),
             master_key=os.environ.get("LITELLM_MASTER_KEY", ""),
             sync_interval=int(os.environ.get("SYNC_INTERVAL", "300")),
             refresh_margin=int(os.environ.get("REFRESH_MARGIN", "900")),

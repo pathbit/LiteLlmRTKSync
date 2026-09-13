@@ -131,6 +131,43 @@ class LiteLLMClient:
             raise
         return [m for m in (dados or {}).get("data", []) if isinstance(m, dict)]
 
+    def health_check(self, timeout: Optional[float] = None) -> Dict[str, Any]:
+        """Veredito do PRÓPRIO proxy sobre cada modelo cadastrado.
+
+        Por que esta rota existe no cliente: o `/model/info` **remove** o campo
+        `api_key` da resposta — `remove_sensitive_info_from_deployment` faz
+        `deployment_dict["litellm_params"].pop("api_key", None)` antes de
+        qualquer mascaramento. Não é mascarado, é removido; nem o segredo nem
+        uma referência `os.environ/NOME` chegam aqui. Logo, validar a chave de
+        um modelo a partir do cadastro é impossível por construção.
+
+        Quem tem o segredo é o proxy. O `/health` faz ele mesmo uma chamada real
+        a cada provedor e devolve o resultado por `model_id`. O veredito passa a
+        vir de quem pode emiti-lo, em vez de a tela dizer "não verificada" para
+        sempre.
+
+        Custo: uma chamada real por modelo a cada execução. Fica sob
+        `CREDENTIAL_CHECK_ENABLED`, como o resto da validação viva.
+
+        O timeout é próprio porque esta rota fala com N provedores numa
+        requisição só; o padrão de 10 s do cliente serve para leitura de
+        cadastro, não para isso.
+        """
+        anterior = self.timeout
+        if timeout:
+            self.timeout = timeout
+        try:
+            dados = self._get("/health")
+        except LiteLLMError as e:
+            # Versão sem a rota, ou proxy ocupado: ausência de veredito é um
+            # estado legítimo e não pode derrubar o ciclo inteiro.
+            if e.status in (404, 405):
+                return {}
+            raise
+        finally:
+            self.timeout = anterior
+        return dados if isinstance(dados, dict) else {}
+
     def list_credentials(self) -> List[Dict[str, Any]]:
         """Credenciais nomeadas e reutilizáveis (LiteLLM_CredentialsTable)."""
         try:

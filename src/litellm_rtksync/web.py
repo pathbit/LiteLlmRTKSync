@@ -26,7 +26,7 @@ from typing import Any, Dict, List
 from urllib.parse import parse_qs, urlencode, urlparse
 
 from .config import Settings
-from .cron import CronScheduler, summarize_cycle
+from .cron import CronScheduler
 from .i18n import DEFAULT_LANGUAGE, normalize_language, translate
 from .models import ModelEntry, VirtualKey
 from .prefs import get_preference, set_preference
@@ -216,11 +216,10 @@ class LiteLlmDashboardHandler(BaseHTTPRequestHandler):
 
         if path == "/acoes/atualizar":
             # Só recarrega a página, como nos irmãos. Quem roda um ciclo é
-            # "Sincronizar agora": misturar as duas ações num botão só fazia
-            # cada atualização de tela custar uma varredura inteira no proxy.
+            # "Sincronizar agora", que aponta para /acoes/cron: misturar as duas
+            # ações num botão só fazia cada atualização de tela custar uma
+            # varredura inteira no proxy.
             self.redirect_to_dashboard("info", translate("action.refreshed", self.resolve_language()))
-        elif path == "/acoes/sincronizar":
-            self.handle_sync()
         elif path == "/acoes/cron":
             self.handle_cron_run()
         elif path == "/acoes/idioma":
@@ -251,27 +250,14 @@ class LiteLlmDashboardHandler(BaseHTTPRequestHandler):
     def run_cycle(self) -> Dict[str, Any]:
         return LiteLlmDashboardHandler.execute_cycle()
 
-    def handle_sync(self) -> None:
-        """Executa um ciclo agora, a pedido de quem está na tela."""
-        lang = self.resolve_language()
-        try:
-            result = self.run_cycle() or {}
-        except Exception as e:
-            # O painel continua de pé mesmo com o proxy fora: o operador precisa
-            # ver o motivo na tela, não um 500 do navegador.
-            self.redirect_to_dashboard("danger", translate("cron.failed", lang, error=e))
-            return
-
-        # A conversão do resumo para "inspecionados/achados" mora no cron: dois
-        # lugares contando a mesma coisa acabariam discordando um do outro.
-        inspected, findings, _ = summarize_cycle(result)
-        self.redirect_to_dashboard(
-            "success" if result.get("success", True) else "warning",
-            translate("action.synced", lang, inspected=inspected, findings=findings),
-        )
-
     def handle_cron_run(self) -> None:
-        """Dispara o agendador agora, registrando a execução no histórico dele."""
+        """Dispara o agendador agora, registrando a execução no histórico dele.
+
+        É a ÚNICA rota que roda um ciclo sob demanda, como nos irmãos. Antes
+        havia também `/acoes/sincronizar`, que fazia exatamente o mesmo trabalho
+        por fora do agendador: dois botões para a mesma ação, e o ciclo disparado
+        pelo primeiro não aparecia no histórico que a tela mostra.
+        """
         lang = self.resolve_language()
         if not self.cron_scheduler:
             self.redirect_to_dashboard("warning", translate("cron.unavailable", lang))
@@ -424,6 +410,7 @@ class LiteLlmDashboardHandler(BaseHTTPRequestHandler):
 
         keys: List[Any] = []
         models: List[Any] = []
+        team_aliases: Dict[str, str] = {}
         if self.engine:
             try:
                 keys = [VirtualKey(k) for k in self.engine.client.list_keys()]
@@ -433,6 +420,20 @@ class LiteLlmDashboardHandler(BaseHTTPRequestHandler):
                 models = [ModelEntry(m) for m in self.engine.client.list_models()]
             except Exception:
                 models = []
+            # O apelido do time NÃO vem no /key/list (o campo existe na
+            # serialização e chega sempre nulo). A única fonte é o /team/list,
+            # e é por isso que esta leitura existe: sem ela a tabela mostraria
+            # o UUID cru ao lado de um achado de limite que cita o apelido.
+            try:
+                team_aliases = {
+                    str(t["team_id"]): str(t.get("team_alias") or t["team_id"])
+                    for t in self.engine.client.list_teams()
+                    if t.get("team_id")
+                }
+            except Exception:
+                # Rota indisponível não pode derrubar a página: sem o mapa a
+                # célula volta ao UUID, que é o comportamento de antes.
+                team_aliases = {}
 
         details = state.get("details") or []
         # O estado do modelo só existe quando a validação viva está ligada; a
@@ -453,6 +454,7 @@ class LiteLlmDashboardHandler(BaseHTTPRequestHandler):
         return {
             "keys": keys,
             "models": models,
+            "team_aliases": team_aliases,
             "model_states": model_states,
             "findings": [d for d in details if d.get("kind") == "limit"],
             "counters": state,
@@ -479,6 +481,7 @@ class LiteLlmDashboardHandler(BaseHTTPRequestHandler):
         content = render_dashboard(
             keys=state["keys"],
             models=state["models"],
+            team_aliases=state.get("team_aliases") or {},
             model_states=state["model_states"],
             findings=state["findings"],
             counters=state["counters"],

@@ -22,7 +22,21 @@ ENV_EXAMPLE = RAIZ_REPO / ".env.example"
 
 # Variaveis da stack de teste (docker-compose.test.yml), lidas pelo Postgres e
 # pelo proprio LiteLLM -- nao por este programa.
-DO_GATEWAY = {"POSTGRES_PASSWORD", "LITELLM_SALT_KEY"}
+#
+# As chaves de provedor entram na mesma categoria: o compose as repassa ao
+# container do PROXY, que e quem resolve `os.environ/NOME` quando um modelo
+# aponta para o ambiente. O sincronizador nunca as le -- e nao deve: ele relata
+# de onde vem a credencial, nunca qual e ela. Quem tambem as le e a bancada de
+# teste (tools/popula_bancada.py), que roda fora do pacote.
+DO_GATEWAY = {
+    "POSTGRES_PASSWORD",
+    "LITELLM_SALT_KEY",
+    "ANTHROPIC_API_KEY",
+    "GEMINI_API_KEY",
+    "GROQ_API_KEY",
+    "MISTRAL_API_KEY",
+    "OPENROUTER_API_KEY",
+}
 
 LEITURA = re.compile(r'os\.(?:environ\.get|getenv)\(\s*["\']([A-Z0-9_]+)["\']')
 INDICE = re.compile(r'os\.environ\[\s*["\']([A-Z0-9_]+)["\']')
@@ -72,8 +86,10 @@ class TestDocumentacaoDeAmbiente(unittest.TestCase):
             r'^(?!#)\s*([A-Z0-9_]*(?:PASSWORD|SECRET|TOKEN|KEY)[A-Z0-9_]*)=(.+)$',
             texto, re.M,
         )
-        # Interruptor nao e segredo: REQUIRE_API_KEY=false diz o que o gateway
-        # deve fazer, nao qual e a chave.
+        # Interruptor nao e segredo: um nome que casa com KEY so por conter a
+        # palavra, e cujo valor e liga/desliga, diz o que o programa deve fazer
+        # -- nao qual e a chave. Sem esta excecao o teste acusaria de credencial
+        # publicada qualquer interruptor assim que ele aparecesse no exemplo.
         INTERRUPTORES = {"true", "false", "0", "1", "yes", "no", "on", "off"}
         com_valor = [
             f"{nome}={valor.strip()}"

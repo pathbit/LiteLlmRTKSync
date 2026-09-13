@@ -26,7 +26,32 @@ characters**. A key is a credential; printing it whole to make a table readable 
 problem for a worse one.
 
 **Models.** What is registered and whether each one carries a credential — *whether*, never
-which.
+which. The provenance cell reads `Named credential` when the model is bound to one, and
+**`Not exposed by the gateway`** otherwise: `GET /model/info` runs `pop("api_key", None)` before
+answering, so a model with a perfectly valid inline key arrives here indistinguishable from one
+with no credential at all. Calling that "none declared" would send the operator looking for
+configuration that is already in place.
+
+**The credential verdict comes from the proxy.** Since the record never carries the key, the
+status column asks `GET /health` on the proxy itself — which makes a real call to each provider
+with the key it actually holds — and translates the answer into `Accepted`, `Rejected`,
+`Rate limited` or `Unreachable`. A model the gateway did not judge stays `Not checked`, because
+inventing a verdict is worse than admitting the gap. The whole path runs under
+`CREDENTIAL_CHECK_ENABLED` and costs one real provider call per model per cycle. To see it with
+real data, see [Test Bench](Test-Bench).
+
+**The team column carries the alias, not the raw id.** `/key/list` returns `team_alias` null on
+every key, so the readable name is joined in from `/team/list` at render time. Without that join the
+page contradicted itself: a limit finding naming `bancada-time-estrito` sat beside a table cell
+showing that team's UUID. The id survives in the cell's `title` for anyone matching the screen
+against the API, and a team the proxy did not list falls back to showing the id.
+
+**A detail button per row.** Each line of both tables ends in a narrow `(i)` column that opens a
+modal with the full detail: for a virtual key, its team, the expiry instant, `rpm_limit`,
+`tpm_limit`, the budget ceiling and the models it may call; for a model, its provider, its API
+base and where its credential comes from. Same pattern as the siblings, for the same reason —
+a limit or an address squeezed into a cell pushed the readable columns off the screen. What is
+absent reads *not declared*, never "unlimited", and the key itself never appears.
 
 **Limit findings.** Each one names the field, both values and the consequence. See
 [Rate Limit Coherence](Rate-Limit-Coherence).
@@ -41,6 +66,11 @@ could not be read. Without it, a counter reading zero cannot be told apart from 
 failed. `CRON_ENABLED=0` stops the automatic loop; the **Run now** button and the history keep
 working.
 
+**One cycle trigger, not two.** The header's **Sync now** button and the scheduler card's **Run
+now** submit the same route, `/acoes/cron`, as they do in 9RTKSync and OminiRTkSync. There used
+to be a second route that ran the same cycle outside the scheduler, and a cycle triggered that
+way never appeared in the history the screen shows.
+
 ---
 
 ## Routes
@@ -52,8 +82,7 @@ working.
 | `/api/status` | GET | Full state as JSON |
 | `/api/cron-status` | GET | Scheduler state and run history as JSON |
 | `/acoes/atualizar` | POST | Reload the page from the last known state |
-| `/acoes/sincronizar` | POST | Run an inspection cycle now |
-| `/acoes/cron` | POST | Trigger the scheduler's cycle now |
+| `/acoes/cron` | POST | Run a cycle now, through the scheduler — the header's primary button |
 | `/acoes/testar-gateway` | POST | Probe the proxy's liveness right now |
 | `/acoes/idioma` | POST | Store the interface language |
 | `/acoes/credenciais` | POST | Change the panel password |

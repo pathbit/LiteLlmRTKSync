@@ -14,7 +14,7 @@ fails the build.
 
 | Variable | Default | Description |
 | :--- | :--- | :--- |
-| `LITELLM_URL` | `http://litellm:4000` | Base URL of the proxy. Inside Compose this is the service name |
+| `LITELLM_URL` | `http://litellmrtk-router:4000` | Base URL of the proxy. Inside Compose this is the service name |
 | `LITELLM_MASTER_KEY` | *(empty)* | Master key used to read administrative state. **Required, and a secret** |
 
 The master key grants full administrative read access to the proxy. Put it in `.env`, never in
@@ -88,7 +88,7 @@ restart. Change it in the environment and recreate the container.
 
 | Variable | Default | Description |
 | :--- | :--- | :--- |
-| `CREDENTIAL_CHECK_ENABLED` | `1` | Ask each provider whether the key declared on the model is still accepted |
+| `CREDENTIAL_CHECK_ENABLED` | `1` | Ask whether each model's credential is still accepted — via `GET /health` on the proxy, which holds the key |
 | `CREDENTIAL_CHECK_TIMEOUT` | `8` | Timeout in seconds per probe |
 
 Turning it off leaves the expiry watch and the limit coherence check running; only the live probe
@@ -131,7 +131,7 @@ No dashboard, scheduler on a one-minute cadence, logs kept for 90 days:
 
 ```yaml
 environment:
-  - LITELLM_URL=http://litellm:4000
+  - LITELLM_URL=http://litellmrtk-router:4000
   - LITELLM_MASTER_KEY=${LITELLM_MASTER_KEY:?}
   - SYNC_INTERVAL=60
   - ENABLE_WEB_DASHBOARD=0

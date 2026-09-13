@@ -271,7 +271,25 @@ def render_optional_number(valor: Any, lang: str) -> str:
     return f'<span class="font-monospace">{esc(valor)}</span>'
 
 
-def render_key_details(key: Any, modal_id: str, refresh_margin: int, lang: str) -> str:
+def team_chip(team_id: Optional[str], team_aliases: Optional[Dict[str, str]], lang: str) -> str:
+    """Célula do time: o apelido quando ele existe, o id quando não existe.
+
+    O `/key/list` do LiteLLM devolve `team_alias` SEMPRE nulo — o apelido só
+    existe no `/team/list`. Por isso o rótulo legível chega aqui de fora, num
+    mapa `{team_id: team_alias}`; sem ele a tela mostraria o UUID cru, que é
+    correto mas ilegível. O id fica no `title` mesmo quando há apelido: quem
+    precisa casar a tela com a API continua conseguindo.
+    """
+    if not team_id:
+        return f'<span class="text-secondary">{esc(translate("table.not_declared", lang))}</span>'
+    apelido = (team_aliases or {}).get(team_id)
+    if not apelido or apelido == team_id:
+        return f'<span class="provider-chip" title="{esc(team_id)}">{esc(team_id)}</span>'
+    return f'<span class="provider-chip" title="{esc(team_id)}">{esc(apelido)}</span>'
+
+
+def render_key_details(key: Any, modal_id: str, refresh_margin: int, lang: str,
+                       team_aliases: Optional[Dict[str, str]] = None) -> str:
     """Modal com o que não cabe na linha da chave virtual.
 
     Limites, teto de orçamento, instante de expiração e lista de modelos são
@@ -280,9 +298,7 @@ def render_key_details(key: Any, modal_id: str, refresh_margin: int, lang: str) 
     """
     dados = key.to_dict(refresh_margin)
     linhas = [
-        (translate("table.team", lang),
-         f'<span class="provider-chip">{esc(dados["teamId"])}</span>' if dados.get("teamId")
-         else f'<span class="text-secondary">{esc(translate("table.not_declared", lang))}</span>'),
+        (translate("table.team", lang), team_chip(dados.get("teamId"), team_aliases, lang)),
         (translate("table.status", lang), health_badge(dados["healthStatus"], lang)),
         (translate("table.remaining", lang), render_remaining(dados["remainingSeconds"], lang)),
         (translate("table.expires_at", lang),
@@ -303,7 +319,8 @@ def render_key_details(key: Any, modal_id: str, refresh_margin: int, lang: str) 
     return render_detail_modal(modal_id, dados["alias"], linhas, lang, extra)
 
 
-def render_keys_table(keys: List[Any], refresh_margin: int, lang: str) -> str:
+def render_keys_table(keys: List[Any], refresh_margin: int, lang: str,
+                      team_aliases: Optional[Dict[str, str]] = None) -> str:
     """Chaves virtuais emitidas pelo proxy, uma por linha."""
     if not keys:
         return f"""
@@ -318,12 +335,7 @@ def render_keys_table(keys: List[Any], refresh_margin: int, lang: str) -> str:
     # conter espaço, acento ou barra, e nada disso vale como id de elemento.
     for indice, key in enumerate(keys):
         modal_id = f"detalhe-chave-{indice}"
-        team = key.team_id
-        team_cell = (
-            f'<span class="provider-chip">{esc(team)}</span>'
-            if team
-            else '<span class="text-secondary">—</span>'
-        )
+        team_cell = team_chip(key.team_id, team_aliases, lang)
         # O apelido já chega mascarado quando a chave não tem nome: quem monta a
         # identificação é o modelo, para que a máscara valha em toda saída.
         rows.append(f"""
@@ -335,7 +347,7 @@ def render_keys_table(keys: List[Any], refresh_margin: int, lang: str) -> str:
               <td class="text-end font-monospace">{esc(f"{key.spend:.4f}")}</td>
               <td class="text-end">{detail_button(modal_id, lang)}</td>
             </tr>""")
-        detalhes.append(render_key_details(key, modal_id, refresh_margin, lang))
+        detalhes.append(render_key_details(key, modal_id, refresh_margin, lang, team_aliases))
 
     return f"""
         <div class="table-responsive">
@@ -691,6 +703,7 @@ def render_dashboard(
     auth_from_env: bool = False,
     flash: Optional[Dict[str, str]] = None,
     lang: str = DEFAULT_LANGUAGE,
+    team_aliases: Optional[Dict[str, str]] = None,
 ) -> str:
     """Monta a página completa do dashboard, já com todos os dados embutidos."""
     lang = normalize_language(lang)
@@ -863,7 +876,7 @@ def render_dashboard(
         </span>
         <span class="badge text-bg-dark">{len(keys)}</span>
       </div>
-      {render_keys_table(keys, refresh_margin, lang)}
+      {render_keys_table(keys, refresh_margin, lang, team_aliases)}
     </div>
 
     <div class="card mb-4">
