@@ -3,7 +3,17 @@
 # Cria o .env a partir do .env.example. Nunca sobrescreve um .env existente:
 # ele carrega os seus segredos, e um `make setup` distraido nao pode apaga-los.
 # O docker compose le esse .env sozinho, por estar ao lado do compose.
-setup:
+# A rede de inferencia e compartilhada pelos tres gateways e declarada como
+# externa nos tres composes -- externa justamente para que nenhuma das stacks
+# seja dona dela: qualquer uma pode subir primeiro, e derrubar uma nao leva a
+# rede junto. O preco e que ela precisa existir antes do primeiro `up`, e o
+# compose so diz "network declared as external, but could not be found".
+rede-de-inferencia:
+	@docker network inspect rtk-inference-net >/dev/null 2>&1 \
+		|| docker network create rtk-inference-net >/dev/null \
+		&& echo "rede rtk-inference-net pronta."
+
+setup: rede-de-inferencia
 	@if [ -f .env ]; then \
 		echo ".env ja existe — preservado."; \
 	else \

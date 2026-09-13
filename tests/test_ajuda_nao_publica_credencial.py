@@ -17,9 +17,38 @@ import unittest
 RAIZ = pathlib.Path(__file__).resolve().parent.parent
 FONTE = RAIZ / "src" / "litellm_rtksync"
 
-# Valores que já foram, em algum momento, senha de fábrica deste projeto ou
-# dos gateways que ele acompanha.
-CREDENCIAIS_DE_FABRICA = ("pathbit", "123456", "changeme", "admin123", "Pathbit@2026")
+# Senhas de fábrica conhecidas dos gateways que este projeto acompanha. A senha
+# REAL da instalação não entra aqui: ela é lida do .env em tempo de execução,
+# logo abaixo. A primeira versão deste arquivo trazia o valor real escrito à
+# mão -- um teste criado para impedir credencial em arquivo versionado
+# carregando uma, que é o tipo de ironia que passa despercebida por meses.
+CREDENCIAIS_DE_FABRICA = ("pathbit", "123456", "changeme", "admin123")
+
+
+def senhas_reais_desta_instalacao():
+    """Lê do .env (gitignored) o que NUNCA pode aparecer em arquivo versionado.
+
+    Mais forte do que uma lista fixa: protege a senha que o operador escolheu,
+    qualquer que seja ela, e não só as que alguém lembrou de escrever aqui.
+    """
+    env = RAIZ / ".env"
+    if not env.exists():
+        return set()
+    achadas = set()
+    for linha in env.read_text(encoding="utf-8", errors="ignore").splitlines():
+        linha = linha.strip()
+        if not linha or linha.startswith("#") or "=" not in linha:
+            continue
+        chave, _, valor = linha.partition("=")
+        valor = valor.strip().strip('"').strip("'")
+        # Só o que é credencial, e só se for específico o bastante para uma
+        # busca não dar falso positivo em texto comum.
+        if len(valor) >= 8 and any(
+            marca in chave.upper()
+            for marca in ("PASSWORD", "SECRET", "TOKEN", "KEY", "PASSWD")
+        ):
+            achadas.add(valor)
+    return achadas
 
 
 class AjudaNaoPublicaCredencial(unittest.TestCase):
@@ -46,6 +75,46 @@ class AjudaNaoPublicaCredencial(unittest.TestCase):
             r'dashboard_password:\s*str\s*=\s*""',
             "o padrão tem de ser vazio: qualquer valor aqui é credencial de fábrica",
         )
+
+
+    def test_nenhuma_senha_real_aparece_em_arquivo_versionado(self):
+        """A senha escolhida pelo operador não pode estar em lugar nenhum do repo.
+
+        Varre o que o git rastreia -- não o disco -- porque é o que sai daqui
+        quando alguém clona ou publica.
+        """
+        import subprocess
+
+        senhas = senhas_reais_desta_instalacao()
+        if not senhas:
+            self.skipTest("sem .env nesta máquina: nada a comparar")
+
+        try:
+            saida = subprocess.run(
+                ["git", "-C", str(RAIZ), "ls-files"],
+                capture_output=True,
+                text=True,
+                check=True,
+            )
+        except (FileNotFoundError, subprocess.CalledProcessError):
+            # O contêiner de teste do LiteLlm não traz git. Sem a lista do que
+            # é rastreado, a varredura mediria o disco -- onde o .env mora de
+            # propósito -- e acusaria justamente o arquivo que deve conter a
+            # senha. Pular é mais honesto do que medir a coisa errada.
+            self.skipTest("git indisponível: não dá para saber o que é versionado")
+        rastreados = saida.stdout.split()
+
+        achados = []
+        for relativo in rastreados:
+            caminho = RAIZ / relativo
+            try:
+                texto = caminho.read_text(encoding="utf-8", errors="ignore")
+            except (OSError, UnicodeDecodeError):
+                continue
+            for senha in senhas:
+                if senha in texto:
+                    achados.append(f"{relativo}: contém uma credencial do .env")
+        self.assertEqual(achados, [], "credencial real em arquivo versionado:\n  " + "\n  ".join(achados))
 
 
 if __name__ == "__main__":
