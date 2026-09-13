@@ -48,6 +48,11 @@ class LiteLlmDashboardHandler(BaseHTTPRequestHandler):
     server_version = "LiteLlmRTKSync"
     sys_version = ""
 
+    def version_string(self) -> str:
+        # Sem isto o BaseHTTPRequestHandler concatena server_version com
+        # sys_version e serve "LiteLlmRTKSync " -- com espaco sobrando.
+        return self.server_version
+
     # -- cabeçalhos ---------------------------------------------------------
 
     SECURITY_HEADERS = (
