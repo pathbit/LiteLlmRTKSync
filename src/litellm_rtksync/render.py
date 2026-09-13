@@ -749,7 +749,10 @@ def render_dashboard(
       --line:      #a32626;   /* borda */
       --accent:    #ffce6b;   /* acao primaria */
       --accent-2:  #ffe0a3;   /* acao secundaria, realce */
-      --brand-a:   #a32626;   /* marca, inicio do gradiente */
+      --brand-a:   #c62d2d;   /* marca, inicio do gradiente -- um passo acima
+                                 da linha: quando os dois valiam o mesmo, a
+                                 borda e a marca viravam a mesma cor na tela e
+                                 um dos dois papeis deixava de existir */
       --brand-b:   #ffce6b;   /* marca, fim do gradiente */
       --text:      #e6e8ee;
       --text-dim:  #e3b9b9;
