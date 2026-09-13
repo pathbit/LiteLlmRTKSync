@@ -30,7 +30,7 @@ from .cron import CronScheduler
 from .i18n import DEFAULT_LANGUAGE, normalize_language, translate
 from .models import ModelEntry, VirtualKey
 from .prefs import get_preference, set_preference
-from . import sessao
+from . import protecao, sessao
 from .render import render_dashboard, render_login_page, render_notice_page
 
 
@@ -198,7 +198,11 @@ class LiteLlmDashboardHandler(BaseHTTPRequestHandler):
     def serve_login_page(self, erro: str = "") -> None:
         """Formulario de entrada: a porta do navegador para o painel."""
         lang = self.resolve_language()
-        body = render_login_page(lang, erro)
+        # O desafio so entra depois de algumas falhas: quem acerta de primeira
+        # nunca o ve, e quem insiste passa a pagar CPU por tentativa.
+        endereco = protecao.endereco_do_cliente(self.client_address)
+        desafio = protecao.novo_desafio() if protecao.precisa_de_desafio(endereco) else ""
+        body = render_login_page(lang, erro, desafio, protecao.DIFICULDADE)
         self.send_response(HTTPStatus.OK)
         self.send_header("Content-Type", "text/html; charset=utf-8")
         self.send_header("Content-Length", str(len(body)))
@@ -208,24 +212,66 @@ class LiteLlmDashboardHandler(BaseHTTPRequestHandler):
 
     def handle_login(self) -> None:
         """Valida a credencial do formulario e emite o cookie de sessao."""
+        endereco = protecao.endereco_do_cliente(self.client_address)
+
+        # Teto por janela: o que para o script que tenta mil senhas por minuto.
+        pode, espere = protecao.registra_tentativa(endereco)
+        if not pode:
+            self.responde_429(espere)
+            return
+
         length = int(self.headers.get("Content-Length", 0))
         corpo = self.rfile.read(length) if length > 0 else b""
         campos = parse_qs(corpo.decode("utf-8", "replace"))
         usuario = (campos.get("usuario") or [""])[0]
         senha = (campos.get("senha") or [""])[0]
 
+        # Depois de algumas falhas, o formulario so e aceito com a prova de
+        # trabalho resolvida. Custa CPU para quem tenta em massa e e instantanea
+        # de conferir aqui.
+        if protecao.precisa_de_desafio(endereco):
+            desafio = (campos.get("desafio") or [""])[0]
+            resposta = (campos.get("resposta") or [""])[0]
+            if not protecao.resposta_confere(desafio, resposta):
+                protecao.anota_falha(endereco)
+                self.serve_login_page(translate("auth.login_failed", self.resolve_language()))
+                return
+
+        # A espera cresce a cada falha seguida. E do lado do servidor: nao ha
+        # nada no cliente para desligar.
+        atraso = protecao.espera_por_falhas(endereco)
+        if atraso:
+            time.sleep(atraso)
+
         if not self.settings or not self.settings.verify_credentials(usuario, senha):
             # Mensagem unica para usuario errado e senha errada: distinguir os
             # dois conta a quem tenta qual metade ja acertou.
+            protecao.anota_falha(endereco)
             self.serve_login_page(translate("auth.login_failed", self.resolve_language()))
             return
 
+        protecao.limpa_apos_sucesso(endereco)
         self.send_response(HTTPStatus.FOUND)
         self.send_header("Location", "/")
         self.send_header("Set-Cookie", sessao.cabecalho_para_gravar(sessao.emitir(usuario)))
         self.send_header("Cache-Control", "no-store")
         self.send_header("Content-Length", "0")
         self.end_headers()
+
+    def responde_429(self, espere_segundos: int) -> None:
+        """Pedidos demais: 429 com Retry-After, que e o que um cliente correto le."""
+        lang = self.resolve_language()
+        payload = render_notice_page(
+            translate("auth.too_many", lang),
+            translate("auth.too_many_body", lang, seconds=espere_segundos),
+        )
+        self.send_response(HTTPStatus.TOO_MANY_REQUESTS)
+        self.send_header("Retry-After", str(espere_segundos))
+        self.send_header("Content-Type", "text/html; charset=utf-8")
+        self.send_header("Content-Length", str(len(payload)))
+        self.send_header("Cache-Control", "no-store")
+        self.end_headers()
+        self.write_body(payload)
 
     def handle_logout(self) -> None:
         """Apaga o cookie. O Basic Auth nao tem equivalente disso."""
@@ -243,6 +289,18 @@ class LiteLlmDashboardHandler(BaseHTTPRequestHandler):
             return
         # A pagina de login e publica por definicao: exigir sessao para exibir o
         # formulario que cria a sessao seria um circulo fechado.
+        # Publico de proposito, e servido antes da sessao: um rastreador nao
+        # tem credencial, e a unica forma de ele ler a regra e ela nao exigir
+        # uma. O painel nao deve aparecer em indice de busca nenhum.
+        if path == "/robots.txt":
+            corpo = b"User-agent: *\nDisallow: /\n"
+            self.send_response(HTTPStatus.OK)
+            self.send_header("Content-Type", "text/plain; charset=utf-8")
+            self.send_header("Content-Length", str(len(corpo)))
+            self.end_headers()
+            self.write_body(corpo)
+            return
+
         if path == "/login":
             self.serve_login_page()
             return

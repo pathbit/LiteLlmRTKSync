@@ -138,7 +138,12 @@ def render_notice_page(title: str, body: str, link_label: str = "") -> bytes:
 </html>""".encode("utf-8")
 
 
-def render_login_page(lang: str = DEFAULT_LANGUAGE, erro: str = "") -> bytes:
+def render_login_page(
+    lang: str = DEFAULT_LANGUAGE,
+    erro: str = "",
+    desafio: str = "",
+    dificuldade: int = 4,
+) -> bytes:
     """Formulario de entrada, com a mesma casca e a mesma paleta do painel.
 
     Existe porque o dialogo do Basic Auth e uma janela do NAVEGADOR: nao se
@@ -152,6 +157,31 @@ def render_login_page(lang: str = DEFAULT_LANGUAGE, erro: str = "") -> bytes:
         f'<i class="bi bi-exclamation-octagon-fill" aria-hidden="true"></i>'
         f'<span>{esc(erro)}</span></div>'
         if erro
+        else ""
+    )
+    desafio_html = (
+        f'<input type="hidden" name="desafio" value="{esc(desafio)}">'
+        f'<input type="hidden" name="resposta" id="resposta" value="">'
+        f'<p class="text-secondary small d-flex align-items-center gap-2" id="aviso-desafio">'
+        f'<span class="spinner-border spinner-border-sm" role="status" aria-hidden="true"></span>'
+        f'{esc(translate("auth.challenge", lang))}</p>'
+        f'<script>'
+        f'(async () => {{'
+        f'  const desafio = {desafio!r};'
+        f'  const alvo = "0".repeat({dificuldade});'
+        f'  const cod = new TextEncoder();'
+        f'  for (let n = 0; n < 20000000; n++) {{'
+        f'    const buf = await crypto.subtle.digest("SHA-256", cod.encode(desafio + n));'
+        f'    const hex = [...new Uint8Array(buf)].map(b => b.toString(16).padStart(2, "0")).join("");'
+        f'    if (hex.startsWith(alvo)) {{'
+        f'      document.getElementById("resposta").value = String(n);'
+        f'      document.getElementById("aviso-desafio").remove();'
+        f'      break;'
+        f'    }}'
+        f'  }}'
+        f'}})();'
+        f'</script>'
+        if desafio
         else ""
     )
     return f"""<!DOCTYPE html>
@@ -195,6 +225,7 @@ def render_login_page(lang: str = DEFAULT_LANGUAGE, erro: str = "") -> bytes:
           <input class="form-control" id="senha" name="senha" type="password"
                  autocomplete="current-password" required>
         </div>
+        {desafio_html}
         <button class="btn btn-primary w-100" type="submit">
           <i class="bi bi-box-arrow-in-right me-1" aria-hidden="true"></i>{esc(translate("auth.enter", lang))}
         </button>
