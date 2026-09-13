@@ -216,6 +216,93 @@ def render_remaining(remaining: Optional[int], lang: str) -> str:
     return esc(format_duration(remaining, lang))
 
 
+def render_detail_modal(modal_id: str, title: str, rows: List[tuple], lang: str,
+                        extra: str = "") -> str:
+    """Casca do modal de detalhe, igual à dos irmãos.
+
+    O modal é devolvido como bloco solto para ser emitido DEPOIS da tabela:
+    um `<div>` dentro de `<tbody>` é HTML inválido, e o navegador o move sozinho
+    para fora — o que transforma cada linha da tabela numa surpresa de layout.
+    """
+    corpo = "".join(
+        f'<dt class="col-5 text-secondary fw-normal">{esc(rotulo)}</dt>'
+        f'<dd class="col-7 text-end">{valor}</dd>'
+        for rotulo, valor in rows
+    )
+    return f"""
+  <div class="modal fade" id="{esc(modal_id)}" tabindex="-1" aria-hidden="true">
+    <div class="modal-dialog modal-dialog-centered">
+      <div class="modal-content">
+        <div class="modal-header">
+          <h2 class="modal-title h6 d-inline-flex align-items-center gap-2">
+            <i class="bi bi-info-circle" aria-hidden="true"></i>{esc(title)}
+          </h2>
+          <button type="button" class="btn-close" data-bs-dismiss="modal"
+                  aria-label="{esc(translate("action.close", lang))}"></button>
+        </div>
+        <div class="modal-body">
+          <dl class="row mb-0 small">{corpo}</dl>
+          {extra}
+        </div>
+      </div>
+    </div>
+  </div>"""
+
+
+def detail_button(modal_id: str, lang: str) -> str:
+    """Botão (i) da linha: coluna estreita, detalhe por extenso no modal."""
+    return (
+        f'<button class="btn btn-outline-light btn-sm py-0 px-2" type="button" '
+        f'data-bs-toggle="modal" data-bs-target="#{esc(modal_id)}" '
+        f'title="{esc(translate("table.details", lang))}">'
+        f'<i class="bi bi-info-circle" aria-hidden="true"></i></button>'
+    )
+
+
+def render_optional_number(valor: Any, lang: str) -> str:
+    """Número que pode não ter sido declarado.
+
+    Ausência é **não declarado**, nunca "ilimitado": dizer ilimitado afirmaria
+    uma decisão que ninguém tomou, e é justamente a afirmação que faz o operador
+    parar de olhar.
+    """
+    if valor in (None, ""):
+        return f'<span class="text-secondary">{esc(translate("table.not_declared", lang))}</span>'
+    return f'<span class="font-monospace">{esc(valor)}</span>'
+
+
+def render_key_details(key: Any, modal_id: str, refresh_margin: int, lang: str) -> str:
+    """Modal com o que não cabe na linha da chave virtual.
+
+    Limites, teto de orçamento, instante de expiração e lista de modelos são
+    dado de diagnóstico: espremidos na tabela, empurravam as colunas úteis para
+    fora da tela. O token NUNCA entra aqui — o apelido já chega mascarado.
+    """
+    dados = key.to_dict(refresh_margin)
+    linhas = [
+        (translate("table.team", lang),
+         f'<span class="provider-chip">{esc(dados["teamId"])}</span>' if dados.get("teamId")
+         else f'<span class="text-secondary">{esc(translate("table.not_declared", lang))}</span>'),
+        (translate("table.status", lang), health_badge(dados["healthStatus"], lang)),
+        (translate("table.remaining", lang), render_remaining(dados["remainingSeconds"], lang)),
+        (translate("table.expires_at", lang),
+         f'<span class="font-monospace">{esc(format_timestamp(dados["expiresAt"]))}</span>'
+         if dados.get("expiresAt")
+         else f'<span class="text-secondary">{esc(translate("table.not_declared", lang))}</span>'),
+        (translate("table.rpm_limit", lang), render_optional_number(dados.get("rpmLimit"), lang)),
+        (translate("table.tpm_limit", lang), render_optional_number(dados.get("tpmLimit"), lang)),
+        (translate("table.max_budget", lang), render_optional_number(dados.get("maxBudget"), lang)),
+        (translate("table.spend", lang), f'<span class="font-monospace">{esc(f"{key.spend:.4f}")}</span>'),
+    ]
+    extra = ""
+    modelos = dados.get("models") or []
+    if modelos:
+        itens = "".join(f'<li class="font-monospace small">{esc(m)}</li>' for m in modelos)
+        extra = (f'<p class="text-secondary small mb-1 mt-3">{esc(translate("table.models", lang))}</p>'
+                 f'<ul class="mb-0">{itens}</ul>')
+    return render_detail_modal(modal_id, dados["alias"], linhas, lang, extra)
+
+
 def render_keys_table(keys: List[Any], refresh_margin: int, lang: str) -> str:
     """Chaves virtuais emitidas pelo proxy, uma por linha."""
     if not keys:
@@ -226,7 +313,11 @@ def render_keys_table(keys: List[Any], refresh_margin: int, lang: str) -> str:
         </div>"""
 
     rows = []
-    for key in keys:
+    detalhes = []
+    # Identificador do modal pelo ÍNDICE, nunca pelo apelido: um apelido pode
+    # conter espaço, acento ou barra, e nada disso vale como id de elemento.
+    for indice, key in enumerate(keys):
+        modal_id = f"detalhe-chave-{indice}"
         team = key.team_id
         team_cell = (
             f'<span class="provider-chip">{esc(team)}</span>'
@@ -242,11 +333,17 @@ def render_keys_table(keys: List[Any], refresh_margin: int, lang: str) -> str:
               <td>{health_badge(key.health_status(refresh_margin), lang)}</td>
               <td class="text-nowrap">{render_remaining(key.remaining_seconds, lang)}</td>
               <td class="text-end font-monospace">{esc(f"{key.spend:.4f}")}</td>
+              <td class="text-end">{detail_button(modal_id, lang)}</td>
             </tr>""")
+        detalhes.append(render_key_details(key, modal_id, refresh_margin, lang))
 
     return f"""
         <div class="table-responsive">
-          <table class="table table-dark table-hover align-middle mb-0">
+          <table class="table table-dark table-hover align-middle mb-0 tabela-dominio">
+            <colgroup>
+              <col class="c-nome"><col class="c-chip"><col class="c-status">
+              <col class="c-validade"><col class="c-numero"><col class="c-detalhe">
+            </colgroup>
             <thead>
               <tr>
                 <th scope="col">{esc(translate("table.alias", lang))}</th>
@@ -254,12 +351,14 @@ def render_keys_table(keys: List[Any], refresh_margin: int, lang: str) -> str:
                 <th scope="col">{esc(translate("table.status", lang))}</th>
                 <th scope="col">{esc(translate("table.remaining", lang))}</th>
                 <th scope="col" class="text-end">{esc(translate("table.spend", lang))}</th>
+                <th scope="col" class="text-end">{esc(translate("table.details", lang))}</th>
               </tr>
             </thead>
             <tbody>{"".join(rows)}
             </tbody>
           </table>
-        </div>"""
+        </div>
+{"".join(detalhes)}"""
 
 
 def credential_label(model: Any, lang: str) -> str:
@@ -267,6 +366,16 @@ def credential_label(model: Any, lang: str) -> str:
 
     A chave declarada no cadastro é um segredo e não aparece em lugar nenhum da
     página; o que o operador precisa saber é se há credencial e onde ela mora.
+
+    Sobre o último caso, que é o mais comum e o menos óbvio: o `/model/info` do
+    LiteLLM **remove** `api_key` da resposta — `pop("api_key", None)`, antes de
+    qualquer mascaramento. Um modelo com chave perfeitamente válida chega aqui
+    sem campo nenhum, e chamar isso de "nenhuma credencial declarada" afirmaria
+    algo falso sobre o cadastro: manda o operador procurar uma configuração que
+    já existe. O que houve foi outra coisa — o gateway não expôs o campo — e é
+    isso que a tela diz. `credential.env` e `credential.inline` continuam aqui
+    porque descrevem o cadastro corretamente se um dia a rota voltar a devolvê-lo;
+    hoje, por esse caminho, são inalcançáveis.
     """
     if model.key_is_env_reference:
         return translate("credential.env", lang)
@@ -275,6 +384,28 @@ def credential_label(model: Any, lang: str) -> str:
     if model.api_key:
         return translate("credential.inline", lang)
     return translate("credential.absent", lang)
+
+
+def render_model_details(model: Any, modal_id: str, state: Optional[str], lang: str) -> str:
+    """Modal com o que não cabe na linha do modelo.
+
+    A `api_base` é um endereço inteiro e o nome do provedor é um identificador
+    longo sem espaço: na célula, os dois ou estouram a coluna ou forçam a tabela
+    a rolar inteira. A CHAVE do modelo nunca aparece — só de onde ela vem.
+    """
+    linhas = [
+        (translate("table.provider", lang),
+         f'<span class="provider-chip">{esc(model.provider)}</span>' if model.provider
+         else f'<span class="text-secondary">{esc(translate("table.not_declared", lang))}</span>'),
+        (translate("credential.title", lang), esc(credential_label(model, lang))),
+        (translate("table.status", lang),
+         health_badge(state, lang) if state
+         else f'<span class="text-secondary">{esc(translate("health.not_checked", lang))}</span>'),
+        (translate("table.api_base", lang),
+         f'<span class="font-monospace">{esc(model.api_base)}</span>' if model.api_base
+         else f'<span class="text-secondary">{esc(translate("table.not_declared", lang))}</span>'),
+    ]
+    return render_detail_modal(modal_id, model.name, linhas, lang)
 
 
 def render_models_table(models: List[Any], states: Dict[str, str], lang: str) -> str:
@@ -287,7 +418,9 @@ def render_models_table(models: List[Any], states: Dict[str, str], lang: str) ->
         </div>"""
 
     rows = []
-    for model in models:
+    detalhes = []
+    for indice, model in enumerate(models):
+        modal_id = f"detalhe-modelo-{indice}"
         provider = model.provider
         provider_cell = (
             f'<span class="provider-chip">{esc(provider)}</span>'
@@ -304,23 +437,31 @@ def render_models_table(models: List[Any], states: Dict[str, str], lang: str) ->
               <td>{provider_cell}</td>
               <td class="small text-secondary">{esc(credential_label(model, lang))}</td>
               <td>{state_cell}</td>
+              <td class="text-end">{detail_button(modal_id, lang)}</td>
             </tr>""")
+        detalhes.append(render_model_details(model, modal_id, state, lang))
 
     return f"""
         <div class="table-responsive">
-          <table class="table table-dark table-hover align-middle mb-0">
+          <table class="table table-dark table-hover align-middle mb-0 tabela-dominio">
+            <colgroup>
+              <col class="c-nome"><col class="c-chip"><col class="c-credencial">
+              <col class="c-status"><col class="c-detalhe">
+            </colgroup>
             <thead>
               <tr>
                 <th scope="col">{esc(translate("table.name", lang))}</th>
                 <th scope="col">{esc(translate("table.provider", lang))}</th>
                 <th scope="col">{esc(translate("credential.title", lang))}</th>
                 <th scope="col">{esc(translate("table.status", lang))}</th>
+                <th scope="col" class="text-end">{esc(translate("table.details", lang))}</th>
               </tr>
             </thead>
             <tbody>{"".join(rows)}
             </tbody>
           </table>
-        </div>"""
+        </div>
+{"".join(detalhes)}"""
 
 
 def render_limits_card(findings: List[Dict[str, Any]], lang: str) -> str:
@@ -434,11 +575,6 @@ def render_cron_card(cron: Dict[str, Any], lang: str) -> str:
               <i class="bi bi-list-columns-reverse me-1" aria-hidden="true"></i>Logs
               {'<span class="badge text-bg-danger ms-1">!</span>' if failed else ""}
             </button>
-            <form method="post" action="/acoes/cron" class="m-0">
-              <button class="btn btn-success btn-sm" type="submit">
-                <i class="bi bi-play-fill me-1" aria-hidden="true"></i>{esc(translate("action.run_now", lang))}
-              </button>
-            </form>
           </div>
         </div>
         <div class="card-body">
@@ -614,6 +750,27 @@ def render_dashboard(
                       padding: .15rem .5rem; font-family: var(--bs-font-monospace); font-size: .78rem;
                       text-transform: uppercase; }}
     .table-dark {{ --bs-table-bg: transparent; --bs-table-border-color: var(--line); }}
+    /* Tabelas de dominio: largura por coluna fixada, como nos irmaos. Sem isto
+       o navegador reparte a sobra e a coluna do botao (i) fica tao larga quanto
+       a do nome, empurrando o conteudo util para fora da tela. */
+    .tabela-dominio {{ table-layout: fixed; }}
+    .tabela-dominio th, .tabela-dominio td {{ padding: .6rem .5rem; vertical-align: top; }}
+    .tabela-dominio col.c-nome       {{ width: auto; }}
+    .tabela-dominio col.c-chip       {{ width: 12rem; }}
+    .tabela-dominio col.c-credencial {{ width: 14rem; }}
+    .tabela-dominio col.c-status     {{ width: 8rem; }}
+    .tabela-dominio col.c-validade   {{ width: 10rem; }}
+    .tabela-dominio col.c-numero     {{ width: 7rem; }}
+    .tabela-dominio col.c-detalhe    {{ width: 5rem; }}
+    /* O apelido da chave e o nome do modelo sao identificadores longos e sem
+       espaco: sem isto eles estouram a celula em vez de quebrar. */
+    .tabela-dominio td, .tabela-dominio .provider-chip {{ overflow-wrap: anywhere; }}
+    .tabela-dominio .provider-chip {{ display: inline-block; max-width: 100%; white-space: normal; }}
+    /* Em tela estreita a tabela rola sozinha, em vez de espremer as colunas ate
+       o texto virar uma palavra por linha. */
+    @media (max-width: 1200px) {{
+      .tabela-dominio {{ min-width: 58rem; }}
+    }}
     /* A marca e icone BRANCO sobre um tom claro do proprio tema. O gradiente
        de duas cores fazia as tres telas parecerem a mesma marca em cores
        diferentes; com a forma do icone distinta e o fundo discreto, quem
@@ -673,7 +830,7 @@ def render_dashboard(
         <button class="btn btn-outline-light btn-sm" data-bs-toggle="modal" data-bs-target="#modalCredenciais">
           <i class="bi bi-key me-1" aria-hidden="true"></i>{esc(translate("action.access", lang))}
         </button>
-        <form method="post" action="/acoes/sincronizar" class="m-0">
+        <form method="post" action="/acoes/cron" class="m-0">
           <button class="btn btn-primary btn-sm" type="submit">
             <i class="bi bi-arrow-repeat me-1" aria-hidden="true"></i>{esc(translate("action.sync_now", lang))}
           </button>

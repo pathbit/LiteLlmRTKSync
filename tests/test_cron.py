@@ -11,6 +11,7 @@ precisa chegar ao histórico com o motivo escrito.
 """
 
 import threading
+import time
 import unittest
 
 from litellm_rtksync.cron import CronScheduler
@@ -110,6 +111,16 @@ class TestAgendador(unittest.TestCase):
             # Espera o evento em vez de dormir: o intervalo mínimo é de 10s, e
             # um sleep fixo tornaria o teste lento ou instável.
             self.assertTrue(disparou.wait(timeout=5), "o agendador não disparou o ciclo")
+
+            # O evento é marcado na primeira linha do callback, mas o contador
+            # só sobe quando ele RETORNA. Checar o contador aqui mesmo era uma
+            # corrida que a máquina sob carga perdia: o teste via totalRuns=0
+            # com o ciclo já em andamento. Espera a contabilização, não a
+            # partida.
+            limite = time.monotonic() + 5
+            while cron.get_status()["totalRuns"] < 1 and time.monotonic() < limite:
+                time.sleep(0.01)
+
             estado = cron.get_status()
             self.assertTrue(estado["active"])
             self.assertGreaterEqual(estado["totalRuns"], 1)
