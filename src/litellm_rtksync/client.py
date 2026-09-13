@@ -131,6 +131,28 @@ class LiteLLMClient:
             raise
         return [m for m in (dados or {}).get("data", []) if isinstance(m, dict)]
 
+    def router_settings(self) -> Dict[str, Any]:
+        """Configuração corrente do roteador — é de onde saem os fallbacks.
+
+        Devolve só `current_values`: o resto da resposta é metadado de formulário
+        (tipo, descrição, opções de cada campo) que serve à tela de administração
+        do próprio LiteLLM e não a este painel.
+
+        Proxy antigo não tem a rota, e proxy sem roteador iniciado responde 500.
+        Nos dois casos a resposta honesta é "nenhum fallback declarado", e não
+        derrubar a página: quem some é o conteúdo do cartão, nunca o cartão.
+        """
+        try:
+            dados = self._get("/router/settings")
+        except LiteLLMError as e:
+            if e.status in (404, 405, 500):
+                return {}
+            raise
+        if not isinstance(dados, dict):
+            return {}
+        valores = dados.get("current_values")
+        return valores if isinstance(valores, dict) else {}
+
     def health_check(self, timeout: Optional[float] = None) -> Dict[str, Any]:
         """Veredito do PRÓPRIO proxy sobre cada modelo cadastrado.
 

@@ -16,6 +16,24 @@ As quatro públicas, e por quê:
 - `/credenciais-atualizadas`  é servida no instante seguinte à troca de senha,
                  quando o navegador ainda guarda a anterior; exigir a nova ali
                  daria um 401 cru logo depois de a troca ter dado certo.
+
+E as quatro do acesso federado, acrescentadas com o motivo declarado:
+
+- `/sso/oidc/iniciar` e `/sso/oidc/callback`, `/sso/saml/iniciar` e
+  `/sso/saml/acs`: a ida ao provedor de identidade e a volta dele acontecem sem
+  sessão — é a sessão que elas existem para criar. Quem chama `/callback` e o
+  `/acs` é o provedor, que não tem cookie nosso para apresentar.
+
+  Elas não ficam abertas por isso: as quatro passam pelo MESMO teto por endereço
+  do formulário de login (`protecao.registra_tentativa`, 429 com `Retry-After`),
+  e nenhuma delas responde nada enquanto não houver provedor configurado E
+  ligado — sem configuração, `rota_existe` as trata como inexistentes e o
+  servidor devolve 404 pelo mesmo caminho de qualquer rota que nunca existiu.
+
+  `/sso/saml/metadata` NÃO está aqui de propósito: ela é servida depois do
+  `require_auth()`. O operador baixa a descrição do serviço já autenticado, e
+  não há pressa nenhuma em publicá-la — cada rota pública a mais é superfície a
+  mais.
 """
 
 import pathlib
@@ -25,7 +43,12 @@ import unittest
 RAIZ = pathlib.Path(__file__).resolve().parent.parent
 SERVIDOR = RAIZ / "src" / "litellm_rtksync" / "web.py"
 
-PUBLICAS = {"/healthz", "/login", "/robots.txt", "/credenciais-atualizadas"}
+PUBLICAS = {
+    "/healthz", "/login", "/robots.txt", "/credenciais-atualizadas",
+    # Acesso federado: a ida ao provedor e a volta dele. Ver o motivo por
+    # extenso no topo do arquivo.
+    "/sso/oidc/iniciar", "/sso/oidc/callback", "/sso/saml/iniciar",
+}
 
 # Rotas citadas no despacho: `route == "/x"`, `path == "/x"`, startswith("/x")
 ROTA = re.compile(r'(?:route|path|rota_inicial)\s*==\s*"(/[a-z0-9/_-]*)"')
@@ -65,7 +88,15 @@ class NadaRespondeSemLogin(unittest.TestCase):
         servidas = set(ROTA.findall(antes))
         # /login e /logout são os únicos POST sem sessão: um a cria, o outro a
         # destrói, e exigir sessão para sair é prender quem quer ir embora.
-        fora = servidas - {"/login", "/logout"}
+        #
+        # `/sso/saml/acs` entra ao lado deles porque quem o dispara é o PROVEDOR
+        # de identidade, de outra origem e ainda sem sessão — é este POST que
+        # cria a sessão. Ele também não passa pela guarda de mesma origem, e não
+        # precisa: a autenticidade vem da assinatura XML e do `InResponseTo`
+        # conferido contra o conjunto de pendentes do servidor, não do cabeçalho
+        # `Origin`. O corpo continua sendo lido DENTRO do handler, nunca no
+        # despacho — é o que o teste seguinte cobra.
+        fora = servidas - {"/login", "/logout", "/sso/saml/acs"}
         self.assertEqual(
             fora,
             set(),

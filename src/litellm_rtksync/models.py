@@ -210,6 +210,143 @@ class ModelEntry:
         }
 
 
+@dataclass
+class UpstreamConnection:
+    """Um destino real atrás dos modelos cadastrados.
+
+    Os painéis irmãos listam "conexões monitoradas": as identidades que o
+    gateway usa para falar com o provedor. O LiteLLM não guarda essa lista em
+    lugar nenhum — ele guarda MODELOS, e cada modelo declara para onde vai
+    (`api_base`) e com que credencial (`litellm_credential_name`, `api_key`).
+
+    A conexão, aqui, é o que sobra quando se agrupa os modelos por destino:
+    cada par (provedor, api_base) é um endpoint de verdade, com uma credencial
+    e um conjunto de modelos servidos por ela. Foi a leitura escolhida em vez
+    de "o próprio proxy é a única conexão" porque essa segunda diz sempre a
+    mesma coisa — uma linha, sempre saudável — e não ajuda ninguém a descobrir
+    qual provedor parou de responder.
+
+    Pares de rota do LiteLLM que sustentam isso: `/model/info` devolve
+    `litellm_params` com `api_base` e `litellm_credential_name`; `/credentials`
+    lista as credenciais nomeadas com o valor já mascarado pelo gateway. Nada
+    aqui carrega segredo: só o NOME da credencial e o endereço do destino.
+    """
+
+    provider: str
+    api_base: Optional[str]
+    credential_name: Optional[str]
+    models: List[ModelEntry]
+
+    @property
+    def identity(self) -> str:
+        """Chave de agrupamento, e também o id do modal quando normalizada."""
+        return f"{self.provider}|{self.api_base or ''}"
+
+    @property
+    def name(self) -> str:
+        """Como a conexão se chama na tela.
+
+        O nome da credencial é o rótulo que o operador escolheu e o que ele
+        reconhece; sem credencial nomeada, o endereço do destino é a única
+        identificação honesta; sem endereço, sobra o provedor.
+        """
+        if self.credential_name:
+            return self.credential_name
+        if self.api_base:
+            return self.api_base
+        return self.provider or "(sem destino)"
+
+    @property
+    def model_names(self) -> List[str]:
+        return [m.name for m in self.models]
+
+    def to_dict(self) -> Dict[str, Any]:
+        """Projeção explícita. Nenhuma chave de API entra aqui — só o nome dela."""
+        return {
+            "provider": self.provider,
+            "apiBase": self.api_base,
+            "credentialName": self.credential_name,
+            "models": self.model_names,
+        }
+
+
+def group_connections(models: List[ModelEntry]) -> List[UpstreamConnection]:
+    """Agrupa os modelos cadastrados nos destinos que eles realmente usam.
+
+    A ordem de saída é a da primeira aparição de cada destino, para que a tabela
+    não mude de ordem entre dois carregamentos sem nada ter mudado no gateway.
+    """
+    agrupadas: Dict[str, UpstreamConnection] = {}
+    for modelo in models:
+        chave = f"{modelo.provider}|{modelo.api_base or ''}"
+        conexao = agrupadas.get(chave)
+        if conexao is None:
+            conexao = UpstreamConnection(
+                provider=modelo.provider,
+                api_base=modelo.api_base,
+                credential_name=(str(modelo.params.get("litellm_credential_name"))
+                                 if modelo.params.get("litellm_credential_name") else None),
+                models=[],
+            )
+            agrupadas[chave] = conexao
+        # Modelos do mesmo destino podem declarar credenciais diferentes; o
+        # primeiro nome encontrado vale como rótulo, e o modal mostra os modelos
+        # para quem precisar conferir caso a caso.
+        if conexao.credential_name is None and modelo.params.get("litellm_credential_name"):
+            conexao.credential_name = str(modelo.params["litellm_credential_name"])
+        conexao.models.append(modelo)
+    return list(agrupadas.values())
+
+
+# Os três tipos de fallback do roteador do LiteLLM, na ordem em que a tela os
+# mostra. O valor é a CHAVE de tradução do rótulo; `general` não tem rótulo
+# porque é o caso comum e nomear o óbvio só ocupa a linha.
+TIPOS_DE_FALLBACK = (
+    ("fallbacks", "general", ""),
+    ("context_window_fallbacks", "context_window", "combos.kind_context_window"),
+    ("content_policy_fallbacks", "content_policy", "combos.kind_content_policy"),
+)
+
+
+def fallback_combos(router_settings: Dict[str, Any]) -> List[Dict[str, Any]]:
+    """Combos de resiliência do LiteLLM, que aqui se chamam FALLBACKS.
+
+    O conceito existe e é exatamente o mesmo dos irmãos: um modelo principal e
+    a cascata que assume quando ele falha. O que muda é o nome e o lugar — no
+    LiteLLM isso mora em `router_settings`, e chega por `GET /router/settings`
+    na forma `[{"modelo-principal": ["reserva-1", "reserva-2"]}]`.
+
+    São três listas distintas, e juntá-las numa só sem dizer qual é qual seria
+    mentira: `context_window_fallbacks` só dispara quando a janela estoura e
+    `content_policy_fallbacks` só quando a política recusa. O tipo viaja no
+    registro para a tela poder marcá-lo.
+    """
+    combos: List[Dict[str, Any]] = []
+    if not isinstance(router_settings, dict):
+        return combos
+    for campo, tipo, rotulo in TIPOS_DE_FALLBACK:
+        entradas = router_settings.get(campo)
+        if isinstance(entradas, dict):
+            entradas = [entradas]
+        if not isinstance(entradas, list):
+            continue
+        for entrada in entradas:
+            if not isinstance(entrada, dict):
+                continue
+            for principal, reservas in entrada.items():
+                if isinstance(reservas, str):
+                    reservas = [reservas]
+                if not isinstance(reservas, list):
+                    continue
+                combos.append({
+                    "name": str(principal),
+                    "models": [str(m) for m in reservas],
+                    "kind": tipo,
+                    "kindLabelKey": rotulo,
+                })
+    return combos
+
+
 def summarize(keys: List[VirtualKey], margin_seconds: int = 900) -> Dict[str, int]:
     """Contagem por estado, para o cabeçalho do painel."""
     resumo = {

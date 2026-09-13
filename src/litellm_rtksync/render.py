@@ -7,8 +7,14 @@ desabilitado — o jQuery serve só para conforto.
 
 A casca é a mesma dos projetos irmãos, de propósito: cabeçalho, cartões de
 métrica, seletor de idioma, modais e rodapé são idênticos, e o que muda são os
-tokens de cor e as tabelas de domínio. Onde os irmãos listam conexões e combos,
-aqui estão chaves virtuais, modelos e coerência de limites.
+tokens de cor e o CONTEÚDO das tabelas de domínio.
+
+Os seis cartões existem nos três painéis, sempre, e nesta ordem: conexão com o
+gateway, agendador, conexões monitoradas, chaves virtuais, modelos cadastrados
+e combos de resiliência. Quando um gateway não tem o conceito, o cartão aparece
+com o estado vazio explicando por quê — nunca some da tela. Assimetria entre os
+três é pior que um cartão vazio: quem abre as três telas lado a lado precisa
+encontrar as mesmas peças no mesmo lugar.
 
 Ícones: Bootstrap Icons e flag-icons (fontes/CSS de ícones), nunca emoji.
 Idioma padrão: inglês, com português e espanhol no seletor de bandeiras.
@@ -118,14 +124,24 @@ def format_timestamp_curto(value: Optional[str]) -> str:
     return momento.strftime("%d/%m %H:%M")
 
 
-def render_notice_page(title: str, body: str, link_label: str = "") -> bytes:
+def render_notice_page(title: str, body: str, link_label: str = "",
+                       meta_refresh: str = "") -> bytes:
     """Pagina autonoma para respostas fora do painel autenticado.
 
     E o que o navegador exibe quando o usuario aperta ESC no dialogo do Basic
     Auth, entao nao pode conter nem credencial nem dica de credencial.
+
+    `meta_refresh` existe para o pouso do acesso federado. A volta do provedor
+    NAO pode ser um 302 para "/": no Chrome, uma cadeia de redirecionamento
+    iniciada em outro site nao carrega o cookie `SameSite=Strict` no salto
+    seguinte, e o operador cairia em `/login` com uma sessao valida no bolso. Um
+    200 com refresh quebra a cadeia, e a navegacao seguinte e de primeira parte.
     """
     link = (
         f'<p><a href="/">{esc(link_label)}</a></p>' if link_label else ""
+    )
+    refresh = (
+        f'<meta http-equiv="refresh" content="{esc(meta_refresh)}">' if meta_refresh else ""
     )
     return f"""<!DOCTYPE html>
 <html lang="en" data-bs-theme="dark">
@@ -133,6 +149,7 @@ def render_notice_page(title: str, body: str, link_label: str = "") -> bytes:
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <meta name="robots" content="noindex, nofollow">
+  {refresh}
   <link rel="icon" href="{FAVICON}">
   <title>{esc(title)}</title>
   <link rel="stylesheet" href="{BOOTSTRAP_CSS}">
@@ -152,11 +169,33 @@ def render_notice_page(title: str, body: str, link_label: str = "") -> bytes:
 </html>""".encode("utf-8")
 
 
+def render_sso_login_button(sso: Any, lang: str) -> str:
+    """Botao "Entrar com <provedor>", AO LADO do login por senha -- nunca no lugar dele.
+
+    E um `<a href>`, e nao um `<form>`: a CSP do painel declara
+    `form-action 'self'` e o navegador bloquearia, sem erro visivel na tela, a
+    submissao que redireciona para fora. O botao so e desenhado quando ha
+    configuracao completa E ligada; sem isso a tela e exatamente a de hoje.
+    """
+    if not sso or not sso.esta_ligado():
+        return ""
+    rotulo = translate("sso.login_button", lang, provider=sso.nome_do_provedor())
+    return f"""
+        <div class="d-flex align-items-center gap-2 my-3 text-secondary small">
+          <hr class="flex-grow-1 my-0"><span>{esc(translate("sso.title", lang))}</span><hr class="flex-grow-1 my-0">
+        </div>
+        <a class="btn btn-outline-light w-100 d-inline-flex align-items-center justify-content-center gap-2"
+           href="{esc(sso.rota_de_entrada())}">
+          <i class="bi bi-shield-check" aria-hidden="true"></i>{esc(rotulo)}
+        </a>"""
+
+
 def render_login_page(
     lang: str = DEFAULT_LANGUAGE,
     erro: str = "",
     desafio: str = "",
     dificuldade: int = 4,
+    sso: Any = None,
 ) -> bytes:
     """Formulario de entrada, com a mesma casca e a mesma paleta do painel.
 
@@ -244,6 +283,7 @@ def render_login_page(
           <i class="bi bi-box-arrow-in-right me-1" aria-hidden="true"></i>{esc(translate("auth.enter", lang))}
         </button>
       </form>
+      {render_sso_login_button(sso, lang)}
     </div>
   </main>
 </body>
@@ -626,6 +666,189 @@ def render_models_table(models: List[Any], states: Dict[str, str], lang: str) ->
 {"".join(detalhes)}"""
 
 
+# Gravidade dos vereditos de modelo, do PIOR para o melhor. A conexão agrega os
+# modelos que ela serve, e agregar pela média esconderia justamente o caso que
+# importa: um destino com nove modelos aceitos e um recusado está com problema.
+GRAVIDADE_DO_ESTADO = (
+    "invalid",
+    "unreachable",
+    "rate_limited",
+    "unsupported",
+    "unknown",
+    "not_checked",
+    "valid",
+)
+
+
+def worst_state(states: List[str]) -> Optional[str]:
+    """O pior veredito de um conjunto, ou None quando ninguém emitiu veredito."""
+    presentes = [e for e in states if e]
+    if not presentes:
+        return None
+    for estado in GRAVIDADE_DO_ESTADO:
+        if estado in presentes:
+            return estado
+    # Estado fora do vocabulário conhecido não pode ser promovido a "ok": o
+    # badge já cai em "desconhecido", e é isso que a tela deve dizer.
+    return presentes[0]
+
+
+def render_connection_details(connection: Any, state: Optional[str], lang: str,
+                              modal_id: str) -> str:
+    """Modal com o que não cabe na linha da conexão.
+
+    O endereço do destino é uma URL inteira e a lista de modelos servidos pode
+    ter dezenas de nomes: os dois estouram a coluna. A CREDENCIAL nunca aparece
+    por valor — só o nome que o operador deu a ela no gateway.
+    """
+    linhas = [
+        (translate("table.provider", lang),
+         f'<span class="provider-chip">{esc(connection.provider)}</span>' if connection.provider
+         else f'<span class="text-secondary">{esc(translate("table.not_declared", lang))}</span>'),
+        (translate("table.api_base", lang),
+         f'<span class="font-monospace">{esc(connection.api_base)}</span>' if connection.api_base
+         else f'<span class="text-secondary">{esc(translate("table.not_declared", lang))}</span>'),
+        (translate("credential.title", lang),
+         f'<span class="font-monospace">{esc(connection.credential_name)}</span>'
+         if connection.credential_name
+         else esc(credential_label(connection.models[0], lang)) if connection.models
+         else f'<span class="text-secondary">{esc(translate("table.not_declared", lang))}</span>'),
+        (translate("table.status", lang),
+         health_badge(state, lang) if state
+         else f'<span class="text-secondary">{esc(translate("health.not_checked", lang))}</span>'),
+        (translate("table.remaining", lang),
+         f'<span class="text-secondary">{esc(translate("connections.lifecycle_note", lang))}</span>'),
+    ]
+    extra = ""
+    nomes = connection.model_names
+    if nomes:
+        itens = "".join(f'<li class="font-monospace small">{esc(n)}</li>' for n in nomes)
+        extra = (f'<p class="text-secondary small mb-1 mt-3">'
+                 f'{esc(translate("connections.served_models", lang))}</p>'
+                 f'<ul class="mb-0">{itens}</ul>')
+    return render_detail_modal(modal_id, connection.name, linhas, lang, extra)
+
+
+def render_connections_table(connections: List[Any], model_states: Dict[str, str],
+                             lang: str) -> str:
+    """Conexões monitoradas: os destinos por trás dos modelos cadastrados.
+
+    As mesmas sete colunas dos irmãos. Duas delas ficam em travessão de
+    propósito: um destino do LiteLLM não tem validade nem renovação — quem
+    expira é a credencial no provedor, e isso o gateway não conta. Travessão
+    com a explicação no modal é honesto; inventar uma data não seria.
+    """
+    if not connections:
+        return f"""
+        <div class="text-center text-secondary py-5">
+          <i class="bi bi-inbox fs-1 d-block mb-2" aria-hidden="true"></i>
+          {esc(translate("connections.empty", lang))}
+          <div class="small mt-2">{esc(translate("connections.empty_hint", lang))}</div>
+        </div>"""
+
+    rows = []
+    detalhes = []
+    # Id do modal pelo ÍNDICE: o nome da conexão é uma URL ou um rótulo livre,
+    # e nada disso vale como id de elemento.
+    for indice, conexao in enumerate(connections):
+        modal_id = f"detalhe-conexao-{indice}"
+        estado = worst_state([model_states.get(m.name) for m in conexao.models])
+        estado_cell = (health_badge(estado, lang) if estado
+                       else '<span class="text-secondary">—</span>')
+        provider_cell = (f'<span class="provider-chip">{esc(conexao.provider)}</span>'
+                         if conexao.provider else '<span class="text-secondary">—</span>')
+        tipo = (credential_label(conexao.models[0], lang) if conexao.models
+                else translate("credential.absent", lang))
+        rows.append(f"""
+            <tr>
+              <td>{provider_cell}</td>
+              <td class="fw-semibold">{esc(conexao.name)}
+                <div class="small text-secondary">{len(conexao.models)} {esc(translate("table.models", lang))}</div>
+              </td>
+              <td class="text-nowrap">
+                <i class="bi bi-hdd-network me-1 text-secondary" aria-hidden="true"></i>{esc(tipo)}
+              </td>
+              <td>{estado_cell}</td>
+              <td class="text-secondary">—</td>
+              <td class="text-secondary">—</td>
+              <td class="text-end">{detail_button(modal_id, lang)}</td>
+            </tr>""")
+        detalhes.append(render_connection_details(conexao, estado, lang, modal_id))
+
+    return f"""
+        <div class="table-responsive">
+          <table class="table table-dark table-hover align-middle mb-0 tabela-dominio">
+            <colgroup>
+              <col class="c-provedor"><col class="c-nome"><col class="c-tipo">
+              <col class="c-status"><col class="c-validade"><col class="c-renovacao">
+              <col class="c-detalhe">
+            </colgroup>
+            <thead>
+              <tr>
+                <th scope="col">{esc(translate("table.provider", lang))}</th>
+                <th scope="col">{esc(translate("table.name", lang))}</th>
+                <th scope="col">{esc(translate("table.type", lang))}</th>
+                <th scope="col">{esc(translate("table.status", lang))}</th>
+                <th scope="col">{esc(translate("table.remaining", lang))}</th>
+                <th scope="col">{esc(translate("table.last_refresh", lang))}</th>
+                <th scope="col" class="text-end">{esc(translate("table.details", lang))}</th>
+              </tr>
+            </thead>
+            <tbody>{"".join(rows)}
+            </tbody>
+          </table>
+        </div>
+{"".join(detalhes)}"""
+
+
+def render_combos_table(combos: List[Dict[str, Any]], lang: str) -> str:
+    """Combos de resiliência — no LiteLLM, os fallbacks do roteador.
+
+    Mesmas duas colunas dos irmãos (combo e cascata). O tipo de fallback vira um
+    chip ao lado do nome quando não é o geral: `context_window` e
+    `content_policy` disparam por motivos diferentes, e duas linhas com o mesmo
+    modelo principal e cascatas diferentes, sem dizer por quê, confundiriam.
+    """
+    if not combos:
+        return f"""
+        <div class="text-center text-secondary py-4">
+          <i class="bi bi-diagram-3 fs-3 d-block mb-2" aria-hidden="true"></i>
+          {esc(translate("combos.empty", lang))}
+          <div class="small mt-2">{esc(translate("combos.empty_hint", lang))}</div>
+        </div>"""
+
+    rows = []
+    for combo in combos:
+        models = combo.get("models") or []
+        if isinstance(models, str):
+            models = [models]
+        preview = ", ".join(str(m) for m in models[:4])
+        if len(models) > 4:
+            preview += f" (+{len(models) - 4})"
+        chave_rotulo = combo.get("kindLabelKey") or ""
+        chip = (f' <span class="provider-chip">{esc(translate(chave_rotulo, lang))}</span>'
+                if chave_rotulo else "")
+        rows.append(f"""
+            <tr>
+              <td class="fw-semibold">{esc(combo.get("name", "—"))}{chip}</td>
+              <td class="small text-secondary">{esc(preview) or "—"}</td>
+            </tr>""")
+
+    return f"""
+        <div class="table-responsive">
+          <table class="table table-dark table-hover align-middle mb-0">
+            <thead>
+              <tr>
+                <th scope="col">{esc(translate("table.combo", lang))}</th>
+                <th scope="col">{esc(translate("table.cascade", lang))}</th>
+              </tr>
+            </thead>
+            <tbody>{"".join(rows)}
+            </tbody>
+          </table>
+        </div>"""
+
+
 def render_limits_card(findings: List[Dict[str, Any]], lang: str) -> str:
     """Incoerências entre o limite da chave e o teto do nível acima.
 
@@ -843,6 +1066,205 @@ def render_credentials_modal(auth_from_env: bool, lang: str) -> str:
           </form>"""
 
 
+def _campo_sso(rotulo: str, nome: str, valor: str, dica: str = "",
+               tipo: str = "text", area: bool = False,
+               somente_leitura: bool = False, prefixo: str = "oidc") -> str:
+    """Um campo do formulario de acesso federado, com rotulo traduzido.
+
+    O `prefixo` existe porque as duas abas desenham campos de mesmo nome. Sem
+    ele, dois elementos dividiriam o mesmo `id` -- HTML invalido -- e o rotulo
+    da aba SAML levaria o foco para o campo escondido da aba OIDC.
+    """
+    identificador = f"sso-{prefixo}-" + nome.replace("_", "-")
+    ajuda = f'<div class="form-text">{esc(dica)}</div>' if dica else ""
+    if area:
+        controle = (
+            f'<textarea class="form-control font-monospace" id="{identificador}" '
+            f'name="{esc(nome)}" rows="4">{esc(valor)}</textarea>'
+        )
+    else:
+        controle = (
+            f'<input class="form-control" id="{identificador}" name="{esc(nome)}" '
+            f'type="{esc(tipo)}" value="{esc(valor)}" autocomplete="off"'
+            f'{" readonly" if somente_leitura else ""}>'
+        )
+    return f"""
+              <div class="mb-3">
+                <label class="form-label small" for="{identificador}">{esc(rotulo)}</label>
+                {controle}
+                {ajuda}
+              </div>"""
+
+
+def _confirmacao_sso(lang: str, prefixo: str = "oidc") -> str:
+    """A senha local atual, exigida em toda gravacao de acesso federado.
+
+    Quem sequestra uma sessao de oito horas pode apontar o painel para um
+    provedor hostil e se pôr na lista de autorizados -- persistencia permanente
+    ganha com uma sessao roubada. Pedir a senha local de novo fecha isso.
+    """
+    return f"""
+              <hr class="my-3">
+              <div class="mb-3">
+                <label class="form-label small" for="sso-{prefixo}-usuario">{esc(translate("auth.user", lang))}</label>
+                <input class="form-control" id="sso-{prefixo}-usuario" name="usuario"
+                       autocomplete="username" required>
+              </div>
+              <div class="mb-3">
+                <label class="form-label small" for="sso-{prefixo}-senha">{esc(translate("sso.current_password", lang))}</label>
+                <input class="form-control" id="sso-{prefixo}-senha" name="senha" type="password"
+                       autocomplete="current-password" required>
+                <div class="form-text">{esc(translate("sso.confirm_hint", lang))}</div>
+              </div>"""
+
+
+def render_sso_modal(sso: Any, lang: str) -> str:
+    """Corpo do modal de acesso federado: duas abas, um provedor por vez.
+
+    Um provedor de cada vez, e nunca os dois ligados: com dois emissores
+    legitimos, uma resposta de um pode ser aceita como se fosse do outro
+    (mix-up), e a allowlist passa a ter dois donos.
+
+    O segredo do cliente NUNCA volta para a tela. O campo mostra que ha um
+    valor guardado e permite substitui-lo; salvar em branco MANTEM o anterior.
+    """
+    if sso is None:
+        # Quem nunca configurou nada tambem precisa do formulario: um modal que
+        # so diz "desligado" nao tem como ligar coisa nenhuma.
+        from .sso import ConfiguracaoSSO
+
+        sso = ConfiguracaoSSO()
+
+    if sso.desligado_no_ambiente:
+        aviso_ambiente = f"""
+          <div class="alert alert-warning d-flex align-items-center gap-2" role="note">
+            <i class="bi bi-power" aria-hidden="true"></i>
+            <div>{esc(translate("sso.disabled_by_env", lang))}</div>
+          </div>"""
+    else:
+        aviso_ambiente = ""
+
+    if sso.esta_ligado():
+        situacao = translate("sso.status_on", lang, provider=sso.nome_do_provedor())
+        tom = "text-bg-success"
+    else:
+        situacao = translate("sso.status_off", lang)
+        tom = "text-bg-secondary"
+
+    if sso.segredo_vem_do_ambiente:
+        estado_do_segredo = translate("sso.secret_from_env", lang)
+        campo_do_segredo = (
+            '<input class="form-control" type="password" value="" disabled '
+            'placeholder="••••••••">'
+        )
+    else:
+        estado_do_segredo = translate(
+            "sso.secret_stored" if sso.tem_segredo else "sso.secret_absent", lang
+        )
+        campo_do_segredo = (
+            '<input class="form-control" id="sso-oidc-client-secret" name="client_secret" '
+            'type="password" value="" autocomplete="new-password" placeholder="••••••••">'
+        )
+
+    retorno = sso.url_de_retorno() if sso.base_url else ""
+    metadata = sso.entity_id() if sso.base_url else ""
+
+    aba_oidc = f"""
+            <form method="post" action="/acoes/sso" class="pt-3">
+              <input type="hidden" name="enabled" value="oidc">
+              {_campo_sso(translate("sso.base_url", lang), "base_url", sso.base_url,
+                          translate("sso.base_url_hint", lang))}
+              {_campo_sso(translate("sso.redirect_uri", lang), "redirect_uri_exibido", retorno,
+                          somente_leitura=True)}
+              {_campo_sso(translate("sso.issuer", lang), "issuer", sso.issuer)}
+              {_campo_sso(translate("sso.client_id", lang), "client_id", sso.client_id)}
+              <div class="mb-3">
+                <label class="form-label small" for="sso-oidc-client-secret">{esc(translate("sso.client_secret", lang))}</label>
+                {campo_do_segredo}
+                <div class="form-text">{esc(estado_do_segredo)}</div>
+              </div>
+              {_campo_sso(translate("sso.scopes", lang), "scopes", sso.escopos)}
+              {_campo_sso(translate("sso.allowed_domains", lang), "allowed_domains",
+                          ", ".join(sso.dominios), translate("sso.allowlist_hint", lang))}
+              {_campo_sso(translate("sso.allowed_emails", lang), "allowed_emails",
+                          ", ".join(sso.emails))}
+              {_confirmacao_sso(lang)}
+              <div class="d-flex gap-2">
+                <button class="btn btn-primary flex-grow-1" type="submit">
+                  <i class="bi bi-save me-1" aria-hidden="true"></i>{esc(translate("sso.save", lang))}
+                </button>
+                <button class="btn btn-outline-light" type="submit" name="desligar" value="1">
+                  <i class="bi bi-power me-1" aria-hidden="true"></i>{esc(translate("sso.status_off", lang))}
+                </button>
+              </div>
+            </form>"""
+
+    if not sso_disponivel_para_saml(sso):
+        aba_saml = f"""
+            <div class="alert alert-secondary d-flex align-items-center gap-2 mt-3 mb-0" role="note">
+              <i class="bi bi-info-circle" aria-hidden="true"></i>
+              <div>{esc(translate("sso.saml_unavailable", lang))}</div>
+            </div>"""
+    else:
+        aba_saml = f"""
+            <form method="post" action="/acoes/sso" class="pt-3">
+              <input type="hidden" name="enabled" value="saml">
+              {_campo_sso(translate("sso.base_url", lang), "base_url", sso.base_url,
+                          translate("sso.base_url_hint", lang), prefixo="saml")}
+              {_campo_sso(translate("sso.idp_entity_id", lang), "idp_entity_id",
+                          sso.idp_entity_id, prefixo="saml")}
+              {_campo_sso(translate("sso.idp_sso_url", lang), "idp_sso_url",
+                          sso.idp_sso_url, prefixo="saml")}
+              {_campo_sso(translate("sso.idp_cert", lang), "idp_cert", sso.idp_cert,
+                          translate("sso.metadata_hint", lang, url=metadata), area=True,
+                          prefixo="saml")}
+              {_campo_sso(translate("sso.allowed_domains", lang), "allowed_domains",
+                          ", ".join(sso.dominios), translate("sso.allowlist_hint", lang),
+                          prefixo="saml")}
+              {_campo_sso(translate("sso.allowed_emails", lang), "allowed_emails",
+                          ", ".join(sso.emails), prefixo="saml")}
+              {_confirmacao_sso(lang, "saml")}
+              <button class="btn btn-primary w-100" type="submit">
+                <i class="bi bi-save me-1" aria-hidden="true"></i>{esc(translate("sso.save", lang))}
+              </button>
+            </form>"""
+
+    return f"""
+          {aviso_ambiente}
+          <p class="text-secondary small">{esc(translate("sso.intro", lang))}</p>
+          <p class="small mb-3">
+            <span class="text-secondary">{esc(translate("sso.provider", lang))}:</span>
+            <span class="badge {tom}">{esc(situacao)}</span>
+          </p>
+          <ul class="nav nav-tabs" role="tablist">
+            <li class="nav-item" role="presentation">
+              <button class="nav-link active" data-bs-toggle="tab" data-bs-target="#abaOIDC"
+                      type="button" role="tab">{esc(translate("sso.tab_oidc", lang))}</button>
+            </li>
+            <li class="nav-item" role="presentation">
+              <button class="nav-link" data-bs-toggle="tab" data-bs-target="#abaSAML"
+                      type="button" role="tab">{esc(translate("sso.tab_saml", lang))}</button>
+            </li>
+          </ul>
+          <div class="tab-content">
+            <div class="tab-pane fade show active" id="abaOIDC" role="tabpanel">{aba_oidc}
+            </div>
+            <div class="tab-pane fade" id="abaSAML" role="tabpanel">{aba_saml}
+            </div>
+          </div>"""
+
+
+def sso_disponivel_para_saml(sso: Any) -> bool:
+    """A biblioteca de SAML esta nesta imagem?
+
+    Perguntado ao modulo de SSO, e nao importado aqui: `render.py` nao conhece
+    protocolo nenhum, e a aba desabilitada e uma decisao de tela.
+    """
+    from .sso import saml_disponivel
+
+    return saml_disponivel()
+
+
 def render_dashboard(
     *,
     keys: List[Any],
@@ -859,10 +1281,23 @@ def render_dashboard(
     flash: Optional[Dict[str, str]] = None,
     lang: str = DEFAULT_LANGUAGE,
     team_aliases: Optional[Dict[str, str]] = None,
+    # Os dois cartões que este painel passou a ter para ficar igual aos irmãos.
+    # Vêm com padrão porque quem chama de fora (teste, ferramenta) não precisa
+    # conhecer o gateway inteiro para desenhar a página — sem eles o cartão
+    # aparece vazio, que é o comportamento correto, e não some.
+    connections: Optional[List[Any]] = None,
+    combos: Optional[List[Dict[str, Any]]] = None,
+    # Configuracao de acesso federado. Vem com padrao None porque quem chama de
+    # fora (teste, ferramenta) nao precisa conhecer o provedor para desenhar a
+    # pagina -- sem ela o modal aparece dizendo que esta desligado, que e o
+    # estado correto de um painel sem SSO configurado.
+    sso: Any = None,
 ) -> str:
     """Monta a página completa do dashboard, já com todos os dados embutidos."""
     lang = normalize_language(lang)
     generated_at = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%S UTC")
+    connections = connections or []
+    combos = combos or []
 
     metrics = "".join([
         metric_card(translate("metric.virtual_keys", lang), counters.get("keys", 0), "bi-key", "text-info"),
@@ -935,7 +1370,10 @@ def render_dashboard(
     .tabela-dominio td, .tabela-dominio th {{ overflow: hidden; text-overflow: ellipsis; }}
     /* O cabecalho nao pode quebrar no meio da palavra ("Detalhe" / "s"). */
     .tabela-dominio th {{ white-space: nowrap; }}
+    .tabela-dominio col.c-provedor   {{ width: 8rem; }}
     .tabela-dominio col.c-nome       {{ width: auto; }}
+    .tabela-dominio col.c-tipo       {{ width: 9.5rem; }}
+    .tabela-dominio col.c-renovacao  {{ width: 10.5rem; }}
     .tabela-dominio col.c-chip       {{ width: 12rem; }}
     .tabela-dominio col.c-credencial {{ width: 14rem; }}
     .tabela-dominio col.c-status     {{ width: 9.5rem; }}
@@ -981,6 +1419,15 @@ def render_dashboard(
     .barra-acoes .btn {{ height: 2rem; padding-top: 0; padding-bottom: 0;
                          display: inline-flex; align-items: center; line-height: 1; }}
     .barra-acoes .fi {{ line-height: 1; }}
+    /* Abas do modal de acesso federado: os tokens sao os que ja existem. O
+       Bootstrap desenha a aba inativa quase invisivel sobre superficie escura,
+       e a ativa com a borda da propria pagina -- que aqui e vinho. */
+    .nav-tabs {{ border-bottom-color: var(--line); }}
+    .nav-tabs .nav-link {{ color: var(--text-dim); }}
+    .nav-tabs .nav-link.active {{ background: var(--surface-2); color: var(--text);
+                                  border-color: var(--line) var(--line) var(--surface-2); }}
+    .form-control, .form-control:focus {{ background: var(--bg); color: var(--text);
+                                          border-color: var(--line); box-shadow: none; }}
   </style>
 </head>
 <body>
@@ -1006,6 +1453,12 @@ def render_dashboard(
             <i class="bi bi-arrow-repeat me-1" aria-hidden="true"></i>{esc(translate("action.sync_now", lang))}
           </button>
         </form>
+        <div class="m-0">
+          <button class="btn btn-outline-light btn-sm" type="button"
+                  data-bs-toggle="modal" data-bs-target="#modalSSO">
+            <i class="bi bi-gear me-1" aria-hidden="true"></i>{esc(translate("action.settings", lang))}
+          </button>
+        </div>
         <form method="post" action="/logout" class="m-0">
           <button class="btn btn-outline-light btn-sm" type="submit">
             <i class="bi bi-box-arrow-right me-1" aria-hidden="true"></i>{esc(translate("auth.logout", lang))}
@@ -1017,11 +1470,23 @@ def render_dashboard(
     <div class="row g-3 mb-4">{metrics}
     </div>
 
+    <!-- Os seis cartões, na ordem acordada para os três painéis:
+         1 conexão com o gateway · 2 agendador · 3 conexões monitoradas
+         4 chaves virtuais · 5 modelos cadastrados · 6 combos de resiliência -->
     <div class="row g-3 mb-4">
       <div class="col-lg-6">{render_proxy_card(proxy, lang)}</div>
       <div class="col-lg-6">{render_cron_card(cron, lang)}</div>
     </div>
 
+    <div class="card mb-4">
+      <div class="card-header d-flex align-items-center justify-content-between">
+        <span class="d-inline-flex align-items-center gap-2">
+          <i class="bi bi-list-check" aria-hidden="true"></i>{esc(translate("connections.title", lang))}
+        </span>
+        <span class="badge text-bg-dark">{len(connections)}</span>
+      </div>
+      {render_connections_table(connections, model_states, lang)}
+    </div>
 
     <div class="card mb-4">
       <div class="card-header d-flex align-items-center justify-content-between">
@@ -1041,6 +1506,13 @@ def render_dashboard(
         <span class="badge text-bg-dark">{len(models)}</span>
       </div>
       {render_models_table(models, model_states, lang)}
+    </div>
+
+    <div class="card mb-4">
+      <div class="card-header d-inline-flex align-items-center gap-2">
+        <i class="bi bi-diagram-3" aria-hidden="true"></i>{esc(translate("combos.title", lang))}
+      </div>
+      {render_combos_table(combos, lang)}
     </div>
 
     <footer class="d-flex flex-wrap justify-content-between gap-2 text-secondary small pb-3">
@@ -1070,6 +1542,22 @@ def render_dashboard(
                   aria-label="{esc(translate("action.close", lang))}"></button>
         </div>
         <div class="modal-body">{render_cron_history(cron.get("history") or [], lang)}
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="modal fade" id="modalSSO" tabindex="-1" aria-hidden="true">
+    <div class="modal-dialog modal-lg modal-dialog-centered modal-dialog-scrollable">
+      <div class="modal-content">
+        <div class="modal-header">
+          <h2 class="modal-title h6 d-inline-flex align-items-center gap-2">
+            <i class="bi bi-shield-check" aria-hidden="true"></i>{esc(translate("sso.title", lang))}
+          </h2>
+          <button type="button" class="btn-close" data-bs-dismiss="modal"
+                  aria-label="{esc(translate("action.close", lang))}"></button>
+        </div>
+        <div class="modal-body">{render_sso_modal(sso, lang)}
         </div>
       </div>
     </div>

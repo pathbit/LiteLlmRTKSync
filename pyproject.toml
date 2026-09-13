@@ -21,6 +21,19 @@ classifiers = [
     "Topic :: Utilities",
 ]
 
+# OIDC nao aparece aqui de proposito: ele sai inteiro com a biblioteca padrao
+# (urllib, hashlib, hmac, secrets, base64), e nao ha dependencia a declarar.
+#
+# SAML2 exige dependencia externa, e nao ha versao honesta com a biblioteca
+# padrao: `xml.etree.canonicalize` implementa C14N 2.0 e o SAML assina sobre
+# exclusive c14n 1.0; nao ha verificacao RSA na biblioteca padrao; e defender-se
+# de XML Signature Wrapping exige amarrar a referencia da assinatura ao elemento
+# efetivamente lido. Fica como extra, importado de forma preguicosa: quem so
+# quer OIDC nao carrega nada, e sem a biblioteca a aba SAML da tela aparece
+# desabilitada em vez de o painel quebrar.
+[project.optional-dependencies]
+saml = ["python3-saml>=1.16"]
+
 [project.urls]
 Homepage = "https://github.com/pathbit/LiteLlmRTKSync"
 Repository = "https://github.com/pathbit/LiteLlmRTKSync"

@@ -128,6 +128,18 @@ class Settings:
     def get_recovery_file_path(self) -> str:
         return os.path.join(self.get_data_dir(), RECOVERY_FILE_NAME)
 
+    def get_sso_secret_path(self) -> str:
+        """Segredo do cliente OIDC, no MESMO diretorio da credencial de
+        recuperacao e com a mesma permissao 0600.
+
+        Este projeto nao tem SQLite de gateway -- os irmaos derivam o diretorio
+        do banco deles. Aqui a unica fonte e DATA_DIR, que e o volume onde tudo
+        que este processo escreve ja mora.
+        """
+        from .sso import ARQUIVO_DO_SEGREDO
+
+        return os.path.join(self.get_data_dir(), ARQUIVO_DO_SEGREDO)
+
     def get_log_dir(self) -> str:
         return os.environ.get("LOG_DIR") or os.path.join(self.get_data_dir(), "logs")
 

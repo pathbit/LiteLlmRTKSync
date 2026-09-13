@@ -118,6 +118,11 @@ services:
       # ela esta, nunca o valor.
       - DASHBOARD_USER=${DASHBOARD_USER:-admin}
       - DASHBOARD_PASSWORD=${DASHBOARD_PASSWORD:-}
+      # Acesso federado. O resto da configuracao e pela tela; aqui so o segredo
+      # (que o ambiente sobrepoe ao arquivo 0600) e o interruptor de emergencia,
+      # que precisa funcionar exatamente quando o painel nao abre.
+      - OIDC_CLIENT_SECRET=${OIDC_CLIENT_SECRET:-}
+      - SSO_DISABLED=${SSO_DISABLED:-0}
       - CREDENTIAL_CHECK_ENABLED=${CREDENTIAL_CHECK_ENABLED:-1}
       - CREDENTIAL_CHECK_TIMEOUT=${CREDENTIAL_CHECK_TIMEOUT:-8}
       - LOG_DIR=${LOG_DIR:-/app/data/logs}

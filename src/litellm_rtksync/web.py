@@ -28,9 +28,10 @@ from urllib.parse import parse_qs, urlencode, urlparse
 from .config import Settings
 from .cron import CronScheduler
 from .i18n import DEFAULT_LANGUAGE, normalize_language, translate
-from .models import ModelEntry, VirtualKey
+from .logs import get_logger
+from .models import ModelEntry, VirtualKey, fallback_combos, group_connections
 from .prefs import get_preference, set_preference
-from . import protecao, sessao
+from . import protecao, sessao, sso
 from .render import render_dashboard, render_login_page, render_notice_page
 
 
@@ -214,6 +215,25 @@ class LiteLlmDashboardHandler(BaseHTTPRequestHandler):
 
     # -- rotas --------------------------------------------------------------
 
+    def configuracao_sso(self) -> "sso.ConfiguracaoSSO":
+        """Configuracao do acesso federado, lida uma vez por requisicao.
+
+        A leitura e barata mas nao e de graca -- sao onze chaves no SQLite -- e
+        o mesmo pedido a consulta na autenticacao, na tela e no despacho.
+        """
+        guardada = getattr(self, "_configuracao_sso", None)
+        if guardada is None:
+            if self.settings:
+                guardada = sso.carregar(
+                    self.prefs_path(), self.settings.get_sso_secret_path()
+                )
+            else:
+                guardada = sso.ConfiguracaoSSO(
+                    desligado_no_ambiente=sso.desligado_por_ambiente()
+                )
+            self._configuracao_sso = guardada
+        return guardada
+
     def serve_login_page(self, erro: str = "") -> None:
         """Formulario de entrada: a porta do navegador para o painel."""
         lang = self.resolve_language()
@@ -222,7 +242,7 @@ class LiteLlmDashboardHandler(BaseHTTPRequestHandler):
         endereco = protecao.endereco_do_cliente(self.client_address)
         desafio = protecao.novo_desafio() if protecao.precisa_de_desafio(endereco) else ""
         dificuldade = protecao.dificuldade_para(endereco)
-        body = render_login_page(lang, erro, desafio, dificuldade)
+        body = render_login_page(lang, erro, desafio, dificuldade, self.configuracao_sso())
         self.send_response(HTTPStatus.OK)
         self.send_header("Content-Type", "text/html; charset=utf-8")
         self.send_header("Content-Length", str(len(body)))
@@ -305,6 +325,234 @@ class LiteLlmDashboardHandler(BaseHTTPRequestHandler):
         self.end_headers()
 
 
+    # -- acesso federado ----------------------------------------------------
+    #
+    # Quatro rotas publicas a mais, e todas passam pelo MESMO teto por endereco
+    # do formulario de login: a ida ao provedor e a volta dele acontecem sem
+    # sessao -- e a sessao que elas existem para criar.
+
+    def anota_falha_de_sso(self, erro: Exception) -> None:
+        """O motivo vai para o log interno; a tela recebe a mensagem generica.
+
+        Nada aqui carrega credencial: nem o `code`, nem os tokens, nem o segredo
+        do cliente, nem a `SAMLResponse`. O que se registra e o passo que falhou.
+        """
+        get_logger().warning("[SSO] fluxo recusado: %s", erro)
+
+    def recusa_sso(self) -> None:
+        """Mensagem UNICA para toda falha do fluxo federado.
+
+        Distinguir "state trocado" de "e-mail fora da lista" conta ao atacante
+        em que ponto do fluxo ele parou. O formulario local vem junto: quem tem
+        senha entra mesmo com o provedor recusando.
+        """
+        lang = self.resolve_language()
+        corpo = render_login_page(
+            lang, translate("sso.failed", lang), sso=self.configuracao_sso()
+        )
+        self.send_response(HTTPStatus.OK)
+        self.send_header("Content-Type", "text/html; charset=utf-8")
+        self.send_header("Content-Length", str(len(corpo)))
+        self.send_header("Set-Cookie", sessao.cabecalho_para_apagar_estado_sso())
+        self.send_header("Cache-Control", "no-store")
+        self.end_headers()
+        self.write_body(corpo)
+
+    def pousa_sessao_federada(self, email: str) -> None:
+        """Emite o MESMO cookie assinado do formulario e aterrissa em "/".
+
+        NAO e um 302: no Chrome, uma cadeia de redirecionamento iniciada em
+        outro site nao carrega o cookie `SameSite=Strict` no salto seguinte, e o
+        operador cairia em `/login` com uma sessao valida no bolso.
+
+        O destino e SEMPRE "/". Nenhum parametro de retorno vira destino, aqui
+        ou em qualquer lugar: isso seria redirecionamento aberto autenticado.
+        """
+        lang = self.resolve_language()
+        corpo = render_notice_page(
+            translate("sso.entering", lang),
+            translate("sso.entering_body", lang),
+            meta_refresh="0;url=/",
+        )
+        # O prefixo "sso:" distingue no rodape e no log quem entrou pela porta
+        # federada, sem inventar uma segunda forma de sessao.
+        self.send_response(HTTPStatus.OK)
+        self.send_header("Content-Type", "text/html; charset=utf-8")
+        self.send_header("Content-Length", str(len(corpo)))
+        self.send_header(
+            "Set-Cookie", sessao.cabecalho_para_gravar(sessao.emitir("sso:" + email))
+        )
+        self.send_header("Set-Cookie", sessao.cabecalho_para_apagar_estado_sso())
+        self.send_header("Cache-Control", "no-store")
+        self.end_headers()
+        self.write_body(corpo)
+
+    def freio_do_sso(self) -> bool:
+        """Aplica o teto por endereco. Devolve True quando ja respondeu 429."""
+        endereco = protecao.endereco_do_cliente(self.client_address)
+        pode, espere = protecao.registra_tentativa(endereco)
+        if not pode:
+            self.responde_429(espere)
+            return True
+        return False
+
+    def inicia_oidc(self) -> None:
+        """Ida ao provedor, com PKCE S256 e o estado num cookie assinado."""
+        if self.freio_do_sso():
+            return
+        config = self.configuracao_sso()
+        if not config.esta_ligado() or config.provedor != "oidc":
+            self.recusa_sso()
+            return
+        try:
+            documento = sso.descobrir(config.issuer)
+        except sso.FalhaDeSSO as erro:
+            # Descoberta quebrada nao trava o login local: a tela volta com o
+            # formulario de sempre.
+            self.anota_falha_de_sso(erro)
+            self.recusa_sso()
+            return
+
+        state = sso.novo_segredo_de_fluxo()
+        nonce = sso.novo_segredo_de_fluxo()
+        verificador = sso.novo_verificador()
+        self.send_response(HTTPStatus.FOUND)
+        self.send_header(
+            "Location", sso.url_de_autorizacao(documento, config, state, nonce, verificador)
+        )
+        self.send_header(
+            "Set-Cookie",
+            sessao.cabecalho_para_gravar_estado_sso(
+                sessao.emitir_estado_sso(state, nonce, verificador)
+            ),
+        )
+        self.send_header("Cache-Control", "no-store")
+        self.send_header("Content-Length", "0")
+        self.end_headers()
+
+    def recebe_oidc(self) -> None:
+        """Volta do provedor. Valida TUDO antes de emitir sessao."""
+        if self.freio_do_sso():
+            return
+        config = self.configuracao_sso()
+        if not config.esta_ligado() or config.provedor != "oidc":
+            self.recusa_sso()
+            return
+
+        consulta = parse_qs(urlparse(self.path).query)
+        try:
+            guardado = sessao.ler_estado_sso(
+                sessao.ler_estado_do_cabecalho(self.headers.get("Cookie", ""))
+            )
+            if not guardado:
+                raise sso.FalhaDeSSO("volta sem cookie de estado integro")
+            # Uso unico, e consumido ANTES de qualquer outra conferencia.
+            if sso.estado_ja_usado(guardado["state"]):
+                raise sso.FalhaDeSSO("estado ja gasto: volta repetida")
+            if not sso.mesmo_texto((consulta.get("state") or [""])[0], guardado["state"]):
+                raise sso.FalhaDeSSO("state da query difere do state do cookie")
+            if consulta.get("error"):
+                raise sso.FalhaDeSSO("o provedor devolveu erro na volta")
+            code = (consulta.get("code") or [""])[0]
+            if not code:
+                raise sso.FalhaDeSSO("volta sem code")
+
+            documento = sso.descobrir(config.issuer)
+            segredo, _ = sso.ler_segredo(self.settings.get_sso_secret_path())
+            tokens = sso.troca_o_code(
+                documento, config, segredo, code, guardado["verificador"]
+            )
+            payload = sso.decodifica_payload(tokens["id_token"])
+            sso.confere_id_token(payload, config, guardado["nonce"])
+            userinfo = sso.busca_userinfo(documento, tokens["access_token"])
+            email = sso.email_do_userinfo(userinfo, payload)
+            if not sso.email_autorizado(email, config):
+                raise sso.FalhaDeSSO("e-mail fora da lista de autorizados")
+        except sso.FalhaDeSSO as erro:
+            self.anota_falha_de_sso(erro)
+            self.recusa_sso()
+            return
+
+        protecao.limpa_apos_sucesso(protecao.endereco_do_cliente(self.client_address))
+        self.pousa_sessao_federada(email)
+
+    def inicia_saml(self) -> None:
+        """AuthnRequest por HTTP-Redirect binding, com o ID guardado no servidor."""
+        if self.freio_do_sso():
+            return
+        config = self.configuracao_sso()
+        if not config.esta_ligado() or config.provedor != "saml":
+            self.recusa_sso()
+            return
+        identificador = sso.novo_id_de_requisicao()
+        # No SERVIDOR, e nao em cookie: o ACS e um POST vindo de outro site, e
+        # `SameSite=Lax` nao viaja em POST cross-site.
+        sso.registra_pendente(identificador)
+        self.send_response(HTTPStatus.FOUND)
+        self.send_header(
+            "Location",
+            sso.url_de_ida_saml(config, sso.monta_authn_request(config, identificador)),
+        )
+        self.send_header("Cache-Control", "no-store")
+        self.send_header("Content-Length", "0")
+        self.end_headers()
+
+    def recebe_saml(self) -> None:
+        """ACS: recebe a assercao do provedor e valida antes de emitir sessao.
+
+        Nao passa pela guarda de mesma origem, e nao precisa: por definicao este
+        POST vem de outro site, e a autenticidade vem da assinatura XML e do
+        `InResponseTo`, nao do cabecalho Origin.
+        """
+        if self.freio_do_sso():
+            return
+        config = self.configuracao_sso()
+        if not config.esta_ligado() or config.provedor != "saml":
+            self.recusa_sso()
+            return
+
+        # O corpo e lido AQUI, dentro do handler -- nunca no despacho, que roda
+        # antes de qualquer decisao sobre quem esta do outro lado.
+        tamanho = int(self.headers.get("Content-Length") or 0)
+        corpo = self.rfile.read(tamanho) if tamanho else b""
+        campos = parse_qs(corpo.decode("utf-8", errors="replace"))
+
+        try:
+            resposta = (campos.get("SAMLResponse") or [""])[0]
+            if not resposta:
+                raise sso.FalhaDeSSO("POST no ACS sem SAMLResponse")
+            identificador = sso.in_response_to(resposta)
+            if not sso.consome_pendente(identificador):
+                raise sso.FalhaDeSSO("InResponseTo desconhecido, gasto ou fora do prazo")
+            email = sso.processa_resposta_saml(config, resposta, identificador)
+            if not sso.email_autorizado(email, config):
+                raise sso.FalhaDeSSO("e-mail fora da lista de autorizados")
+        except sso.FalhaDeSSO as erro:
+            self.anota_falha_de_sso(erro)
+            self.recusa_sso()
+            return
+
+        protecao.limpa_apos_sucesso(protecao.endereco_do_cliente(self.client_address))
+        self.pousa_sessao_federada(email)
+
+    def serve_saml_metadata(self) -> None:
+        """Descricao do servico, servida SO com sessao.
+
+        Nao aumenta a lista de rotas publicas: o operador baixa o arquivo
+        autenticado e o entrega ao provedor, e nao ha pressa nenhuma nisso.
+        """
+        try:
+            corpo = sso.metadata_do_sp(self.configuracao_sso()).encode("utf-8")
+        except sso.FalhaDeSSO:
+            self.send_error(HTTPStatus.NOT_FOUND, "Not found")
+            return
+        self.send_response(HTTPStatus.OK)
+        self.send_header("Content-Type", "application/xml; charset=utf-8")
+        self.send_header("Content-Length", str(len(corpo)))
+        self.send_header("Cache-Control", "no-store")
+        self.end_headers()
+        self.write_body(corpo)
+
     # Rotas que este servidor conhece. Serve para uma so decisao, tomada ANTES
     # de exigir sessao: o que nao esta aqui e 404, e nao um convite a fazer
     # login para depois descobrir que a pagina nunca existiu.
@@ -319,7 +567,12 @@ class LiteLlmDashboardHandler(BaseHTTPRequestHandler):
     PREFIXOS_CONHECIDOS = ("/api/", "/acoes/")
 
     def rota_existe(self, caminho: str) -> bool:
-        return caminho in self.ROTAS_CONHECIDAS or caminho.startswith(self.PREFIXOS_CONHECIDOS)
+        if caminho in self.ROTAS_CONHECIDAS or caminho.startswith(self.PREFIXOS_CONHECIDOS):
+            return True
+        # SEM CONFIGURACAO, NADA MUDA: as rotas do acesso federado so existem
+        # quando ha provedor configurado E ligado. Desligado, elas devolvem 404
+        # pelo mesmo caminho de qualquer outra rota que nunca existiu.
+        return caminho.startswith("/sso/") and self.configuracao_sso().esta_ligado()
 
     def recusa_rota_desconhecida(self, caminho: str) -> bool:
         """Devolve True e responde 404 quando a rota nao existe neste servidor."""
@@ -329,6 +582,10 @@ class LiteLlmDashboardHandler(BaseHTTPRequestHandler):
         return True
 
     def do_GET(self):
+        # Uma leitura de configuracao por requisicao; a conexao pode ser
+        # reaproveitada, e uma configuracao salva no pedido anterior tem de
+        # valer no seguinte.
+        self._configuracao_sso = None
         path = urlparse(self.path).path
         if self.recusa_rota_desconhecida(path):
             return
@@ -351,6 +608,19 @@ class LiteLlmDashboardHandler(BaseHTTPRequestHandler):
 
         if path == "/login":
             self.serve_login_page()
+            return
+        # As tres rotas de IDA e VOLTA do provedor de identidade. Publicas
+        # porque e a sessao que elas existem para criar -- e porque quem as
+        # chama e o provedor, que nao tem cookie nosso. Todas passam pelo mesmo
+        # teto por endereco do formulario.
+        if path == "/sso/oidc/iniciar":
+            self.inicia_oidc()
+            return
+        if path == "/sso/oidc/callback":
+            self.recebe_oidc()
+            return
+        if path == "/sso/saml/iniciar":
+            self.inicia_saml()
             return
         # Servida ANTES do require_auth de propósito: o navegador ainda está com
         # a senha antiga neste instante, e exigir autenticação aqui daria um 401
@@ -375,16 +645,27 @@ class LiteLlmDashboardHandler(BaseHTTPRequestHandler):
             self.serve_status_json()
         elif path == "/api/cron-status":
             self.serve_cron_status_json()
+        elif path == "/sso/saml/metadata":
+            # Protegida de proposito: ver serve_saml_metadata.
+            self.serve_saml_metadata()
         else:
             self.send_error(HTTPStatus.NOT_FOUND, "Rota inexistente")
 
     def do_POST(self):
+        self._configuracao_sso = None
         rota_inicial = urlparse(self.path).path
         if rota_inicial == "/login":
             self.handle_login()
             return
         if rota_inicial == "/logout":
             self.handle_logout()
+            return
+        # O ACS e disparado pelo PROVEDOR, de outra origem e sem sessao ainda:
+        # e o POST que cria a sessao. A guarda de mesma origem o recusaria
+        # sempre, e ele nao depende dela -- a autenticidade vem da assinatura
+        # XML e do InResponseTo.
+        if rota_inicial == "/sso/saml/acs":
+            self.recebe_saml()
             return
 
         if not self.require_auth():
@@ -417,6 +698,8 @@ class LiteLlmDashboardHandler(BaseHTTPRequestHandler):
             self.handle_test_proxy()
         elif path == "/acoes/credenciais":
             self.handle_credentials(fields)
+        elif path == "/acoes/sso":
+            self.handle_sso(fields)
         else:
             self.send_error(HTTPStatus.NOT_FOUND, "Ação inexistente")
 
@@ -510,6 +793,103 @@ class LiteLlmDashboardHandler(BaseHTTPRequestHandler):
             return
         self.redirect_to_dashboard("danger", translate("auth.save_failed", lang))
 
+    def handle_sso(self, fields: Dict[str, List[str]]) -> None:
+        """Grava a configuracao do acesso federado.
+
+        Tres trancas, e as tres sao necessarias: sessao (do `do_POST`), guarda
+        de mesma origem (idem) e a SENHA LOCAL ATUAL, pedida aqui. A terceira
+        existe porque quem sequestra uma sessao de oito horas poderia apontar o
+        painel para um provedor hostil e se pôr na lista de autorizados --
+        persistencia permanente ganha com uma sessao roubada.
+        """
+        lang = self.resolve_language()
+
+        def campo(nome: str) -> str:
+            return (fields.get(nome, [""])[0] or "").strip()
+
+        if not self.settings or not self.settings.verify_credentials(
+            campo("usuario"), (fields.get("senha", [""])[0] or "")
+        ):
+            self.redirect_to_dashboard("danger", translate("sso.save_refused_password", lang))
+            return
+
+        caminho_do_segredo = self.settings.get_sso_secret_path()
+        escolhido = campo("enabled").lower()
+        if campo("desligar") or not escolhido:
+            # Desligar NAO apaga o que estava configurado: o operador volta a
+            # ligar sem redigitar o provedor inteiro.
+            sso.gravar(self.prefs_path(), {sso.CHAVE_PROVEDOR: ""})
+            self.redirect_to_dashboard("success", translate("sso.turned_off", lang))
+            return
+
+        base_url = campo("base_url").rstrip("/")
+        dominios = campo("allowed_domains")
+        emails = campo("allowed_emails")
+        # Allowlist OBRIGATORIA: o painel recusa LIGAR o acesso federado com a
+        # lista vazia, porque lista vazia significa "toda conta do provedor".
+        if not sso.lista_de(dominios) and not sso.lista_de(emails):
+            self.redirect_to_dashboard("danger", translate("sso.save_refused_allowlist", lang))
+            return
+
+        comum = {
+            sso.CHAVE_BASE_URL: base_url,
+            sso.CHAVE_DOMINIOS: dominios,
+            sso.CHAVE_EMAILS: emails,
+        }
+
+        if escolhido == "oidc":
+            issuer = campo("issuer").rstrip("/")
+            client_id = campo("client_id")
+            if not base_url or not issuer or not client_id:
+                self.redirect_to_dashboard("danger", translate("sso.save_refused_fields", lang))
+                return
+            # Campo em branco MANTEM o segredo anterior. Um campo que nunca
+            # reexibe o valor e limpo a cada abertura da tela; apagar o segredo
+            # por causa disso seria desligar o SSO sem ninguem pedir.
+            novo_segredo = fields.get("client_secret", [""])[0] or ""
+            atual, do_ambiente = sso.ler_segredo(caminho_do_segredo)
+            if novo_segredo and not do_ambiente:
+                if not sso.grava_segredo(caminho_do_segredo, novo_segredo):
+                    self.redirect_to_dashboard(
+                        "danger", translate("sso.save_refused_secret", lang)
+                    )
+                    return
+            elif not atual:
+                self.redirect_to_dashboard("danger", translate("sso.save_refused_secret", lang))
+                return
+            comum.update({
+                sso.CHAVE_PROVEDOR: "oidc",
+                sso.CHAVE_OIDC_ISSUER: issuer,
+                sso.CHAVE_OIDC_CLIENT_ID: client_id,
+                sso.CHAVE_OIDC_SCOPES: campo("scopes") or sso.ESCOPOS_PADRAO,
+            })
+        elif escolhido == "saml":
+            if not sso.saml_disponivel():
+                self.redirect_to_dashboard("danger", translate("sso.save_refused_saml", lang))
+                return
+            entity_id = campo("idp_entity_id")
+            sso_url = campo("idp_sso_url")
+            certificado = campo("idp_cert")
+            if not base_url or not entity_id or not sso_url or not certificado:
+                self.redirect_to_dashboard("danger", translate("sso.save_refused_fields", lang))
+                return
+            comum.update({
+                sso.CHAVE_PROVEDOR: "saml",
+                sso.CHAVE_SAML_IDP_ENTITY_ID: entity_id,
+                sso.CHAVE_SAML_IDP_SSO_URL: sso_url,
+                sso.CHAVE_SAML_IDP_CERT: certificado,
+            })
+        else:
+            self.redirect_to_dashboard("danger", translate("sso.save_refused_fields", lang))
+            return
+
+        if not sso.gravar(self.prefs_path(), comum):
+            self.redirect_to_dashboard("danger", translate("auth.save_failed", lang))
+            return
+        # A descoberta guardada era do issuer antigo.
+        sso.esquece_descobertas()
+        self.redirect_to_dashboard("success", translate("sso.saved", lang))
+
     # -- respostas ----------------------------------------------------------
 
     def redirect_to_dashboard(self, tone: str, message: str) -> None:
@@ -599,6 +979,7 @@ class LiteLlmDashboardHandler(BaseHTTPRequestHandler):
 
         keys: List[Any] = []
         models: List[Any] = []
+        combos: List[Dict[str, Any]] = []
         team_aliases: Dict[str, str] = {}
         if self.engine:
             try:
@@ -623,6 +1004,14 @@ class LiteLlmDashboardHandler(BaseHTTPRequestHandler):
                 # Rota indisponível não pode derrubar a página: sem o mapa a
                 # célula volta ao UUID, que é o comportamento de antes.
                 team_aliases = {}
+            # Combos de resiliência = fallbacks do roteador. Proxy antigo não
+            # tem `/router/settings`, e o cliente já devolve vazio nesse caso;
+            # o `except` cobre o resto (cliente sem o método, rede caindo no
+            # meio) para que o cartão fique vazio em vez de sumir.
+            try:
+                combos = fallback_combos(self.engine.client.router_settings())
+            except Exception:
+                combos = []
 
         details = state.get("details") or []
         # O estado do modelo só existe quando a validação viva está ligada; a
@@ -643,6 +1032,10 @@ class LiteLlmDashboardHandler(BaseHTTPRequestHandler):
         return {
             "keys": keys,
             "models": models,
+            # As conexões não têm rota própria no LiteLLM: elas SÃO os destinos
+            # declarados pelos modelos, agrupados por (provedor, api_base).
+            "connections": group_connections(models),
+            "combos": combos,
             "team_aliases": team_aliases,
             "model_states": model_states,
             "findings": [d for d in details if d.get("kind") == "limit"],
@@ -670,6 +1063,8 @@ class LiteLlmDashboardHandler(BaseHTTPRequestHandler):
         content = render_dashboard(
             keys=state["keys"],
             models=state["models"],
+            connections=state.get("connections") or [],
+            combos=state.get("combos") or [],
             team_aliases=state.get("team_aliases") or {},
             model_states=state["model_states"],
             findings=state["findings"],
@@ -682,6 +1077,7 @@ class LiteLlmDashboardHandler(BaseHTTPRequestHandler):
             auth_from_env=auth_from_env,
             flash=flash,
             lang=self.resolve_language(),
+            sso=self.configuracao_sso(),
         ).encode("utf-8")
         self.respond_html(content)
 

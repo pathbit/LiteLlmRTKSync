@@ -5,6 +5,7 @@
 - [Configuration](Configuration)
 - [Dashboard](Dashboard)
 - [Authentication](Authentication)
+- [Single Sign-On](Single-Sign-On)
 - [Logging](Logging)
 - [Architecture](Architecture)
 - [Remote Access](Remote-Access)

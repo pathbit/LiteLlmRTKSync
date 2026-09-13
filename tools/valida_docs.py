@@ -35,8 +35,11 @@ RX_PORTA = re.compile(r"(?<![\w.:])(\d{4,5})(?![\w.])")
 
 # Linha que invoca outro programa: as flags citadas pertencem a ele.
 RX_COMANDO_DE_TERCEIRO = re.compile(
+    # `apk` é o gerenciador de pacotes do Alpine, e entra pela mesma razão do
+    # `apt`: a página de acesso federado mostra as linhas que instalam a
+    # biblioteca de SAML na imagem, e `--no-cache` e `--virtual` são flags DELE.
     r"\b(pip|pip3|docker|docker[- ]compose|git|curl|wget|tailscale|cloudflared|make|npm|npx|"
-    r"apt|apt-get|brew|systemctl|python3?\s+-m\s+venv|openssl|psql)\b"
+    r"apt|apt-get|apk|brew|systemctl|python3?\s+-m\s+venv|openssl|psql)\b"
 )
 
 # Flags que pertencem a outro programa e aparecem em prosa, sem o comando na
