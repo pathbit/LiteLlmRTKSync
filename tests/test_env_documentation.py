@@ -44,6 +44,14 @@ DO_GATEWAY = {
 # daqui as procura, e é isso que a varredura acima mede.
 DO_COMPOSE = {"TUNNEL_TOKEN", "TS_AUTHKEY"}
 
+# Credenciais que este proxy APRESENTA aos gateways irmaos (9Router e
+# OmniRoute) quando usa um deles como provedor. Mesma categoria das chaves de
+# provedor acima, e pelo mesmo motivo: quem as le e a ferramenta de
+# `tools/registra_gateways.py`, que roda fora do pacote e as entrega ao proxy
+# uma unica vez como credencial nomeada. O sincronizador nunca as le -- ele
+# relata de onde vem a credencial, nunca qual e ela.
+DOS_GATEWAYS_IRMAOS = {"NINEROUTER_API_KEY", "OMNIROUTE_API_KEY"}
+
 LEITURA = re.compile(r'os\.(?:environ\.get|getenv)\(\s*["\']([A-Z0-9_]+)["\']')
 INDICE = re.compile(r'os\.environ\[\s*["\']([A-Z0-9_]+)["\']')
 # O config nao chama os.environ diretamente em todo lugar: ele passa por
@@ -79,7 +87,10 @@ class TestDocumentacaoDeAmbiente(unittest.TestCase):
         )
 
     def test_the_example_documents_nothing_the_code_ignores(self):
-        sobrando = sorted(variaveis_documentadas() - variaveis_lidas() - DO_GATEWAY - DO_COMPOSE)
+        sobrando = sorted(
+            variaveis_documentadas() - variaveis_lidas()
+            - DO_GATEWAY - DO_COMPOSE - DOS_GATEWAYS_IRMAOS
+        )
         self.assertEqual(
             sobrando, [],
             "variaveis no .env.example que programa nenhum le: " + ", ".join(sobrando),

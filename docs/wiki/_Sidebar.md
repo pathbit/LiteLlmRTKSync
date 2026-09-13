@@ -9,6 +9,7 @@
 - [Architecture](Architecture)
 - [Remote Access](Remote-Access)
 - [Egress Testing](Egress-Testing)
+- [Chaining Gateways](Chaining-Gateways)
 - [Rate Limit Coherence](Rate-Limit-Coherence)
 - [Test Bench](Test-Bench)
 - [Licensing and Capacity](Licensing-And-Capacity)

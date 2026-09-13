@@ -38,7 +38,12 @@ services:
     container_name: litellmrtk-router
     hostname: litellmrtk-router
     networks:
+      # Duas redes de proposito (ver o bloco `networks:` no fim do arquivo):
+      # a propria, de gestao, onde ficam o Postgres e o sincronizador desta
+      # stack; e a de inferencia, a unica onde este proxy alcanca os gateways
+      # irmaos pelos nomes `9rtk-router` e `ominirtk-router`.
       - litellmrtksync-net
+      - rtk-inference-net
     restart: unless-stopped
     ports:
       # Porta interna 4000 (padrao do LiteLLM); publicada em 8083 no host.
@@ -199,3 +204,30 @@ networks:
     # Rede propria da stack. Na rede default, duas stacks no mesmo
     # daemon resolvem o mesmo nome curto e nao da para saber a qual
     # gateway o sincronizador se conectou.
+
+  # POR QUE SAO DUAS REDES
+  #
+  # A de cima e de GESTAO e continua isolada: o Postgres e o sincronizador
+  # desta stack so falam com este proxy. E isso que garante que o painel do
+  # LiteLlmRTKSync nunca leia, sem querer, o gateway de um irmao -- antes, com
+  # todos na rede default, o mesmo nome curto resolvia para stacks diferentes
+  # e ninguem sabia a qual gateway o painel estava conectado. Nao desfaca.
+  #
+  # Esta e de INFERENCIA e e compartilhada de proposito. E ela que responde ao
+  # sintoma "nao consigo conectar o LiteLLM com o 9Router ou o OmniRoute": sem
+  # ela, `getent hosts 9rtk-router` de dentro deste container nao resolve nada,
+  # porque cada stack vive so na sua rede. Com ela, um deployment pode apontar
+  # para http://9rtk-router:20128/v1 ou http://ominirtk-router:20128/v1.
+  # Atencao: 127.0.0.1:8081 NAO serve de api_base -- dentro deste container o
+  # loopback e o proprio LiteLLM. Tem de ser o nome do servico.
+  #
+  # So os gateways e este proxy entram nela; os sincronizadores NAO -- eles nao
+  # tem o que fazer no caminho de inferencia, e mante-los de fora preserva o
+  # isolamento de gestao.
+  #
+  # `external: true` porque a rede e compartilhada pelas tres stacks: ela nao
+  # pertence a nenhuma, nasce e morre fora do ciclo de vida de qualquer uma:
+  #     docker network create rtk-inference-net
+  rtk-inference-net:
+    name: rtk-inference-net
+    external: true
