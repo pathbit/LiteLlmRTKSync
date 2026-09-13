@@ -113,15 +113,34 @@ class LiteLlmDashboardHandler(BaseHTTPRequestHandler):
     # -- autenticação -------------------------------------------------------
 
     def require_auth(self) -> bool:
-        # Duas portas para a mesma casa. O cookie e o que o navegador usa depois
-        # do formulario; o Basic Auth continua aceito porque e ele que faz curl,
-        # script e monitoramento funcionarem sem sessao.
+        # Duas portas, e elas NAO servem ao mesmo visitante.
+        #
+        # O cookie e a porta do navegador, e e a unica que tem tranca do lado de
+        # dentro: "Sair" apaga o cookie e acabou. O Basic Auth nao tem logout --
+        # o navegador guarda a credencial e a reenvia sozinho ate a janela
+        # fechar, e nao existe cabecalho que mande ele esquecer. Enquanto a
+        # navegacao aceitava Basic, o botao Sair apagava o cookie e a proxima
+        # visita entrava de novo pela outra porta: o botao mentia.
+        #
+        # Por isso quem pede HTML (um navegador) precisa de SESSAO, e so. Quem
+        # nao pede HTML -- curl, script, monitoramento -- continua com Basic
+        # Auth, que e o esquema que essas ferramentas sabem usar sem guardar
+        # estado, e para as quais "sair" nao quer dizer nada.
         usuario_da_sessao = sessao.usuario_da_sessao(
             sessao.ler_do_cabecalho(self.headers.get("Cookie", ""))
         )
         if usuario_da_sessao:
             self.authenticated_user = usuario_da_sessao
             return True
+
+        if "text/html" in self.headers.get("Accept", ""):
+            lang = self.resolve_language()
+            self.send_response(HTTPStatus.FOUND)
+            self.send_header("Location", "/login")
+            self.send_header("Cache-Control", "no-store")
+            self.send_header("Content-Length", "0")
+            self.end_headers()
+            return False
 
         header = self.headers.get("Authorization", "")
         if header.startswith("Basic "):
@@ -285,8 +304,34 @@ class LiteLlmDashboardHandler(BaseHTTPRequestHandler):
         self.send_header("Content-Length", "0")
         self.end_headers()
 
+
+    # Rotas que este servidor conhece. Serve para uma so decisao, tomada ANTES
+    # de exigir sessao: o que nao esta aqui e 404, e nao um convite a fazer
+    # login para depois descobrir que a pagina nunca existiu.
+    #
+    # Rota REAL e protegida continua mandando para /login -- e a diferenca entre
+    # "voce precisa entrar" e "isso nao existe", que sao respostas diferentes
+    # para perguntas diferentes.
+    ROTAS_CONHECIDAS = {
+        "/", "/index.html", "/healthz", "/login", "/logout", "/robots.txt",
+        "/favicon.ico", "/credenciais-atualizadas", "/logs",
+    }
+    PREFIXOS_CONHECIDOS = ("/api/", "/acoes/")
+
+    def rota_existe(self, caminho: str) -> bool:
+        return caminho in self.ROTAS_CONHECIDAS or caminho.startswith(self.PREFIXOS_CONHECIDOS)
+
+    def recusa_rota_desconhecida(self, caminho: str) -> bool:
+        """Devolve True e responde 404 quando a rota nao existe neste servidor."""
+        if self.rota_existe(caminho):
+            return False
+        self.send_error(HTTPStatus.NOT_FOUND, "Not found")
+        return True
+
     def do_GET(self):
         path = urlparse(self.path).path
+        if self.recusa_rota_desconhecida(path):
+            return
         if path == "/healthz":
             self.serve_healthz()
             return

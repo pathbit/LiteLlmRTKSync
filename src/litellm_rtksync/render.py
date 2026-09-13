@@ -1022,15 +1022,6 @@ def render_dashboard(
       <div class="col-lg-6">{render_cron_card(cron, lang)}</div>
     </div>
 
-    <div class="card mb-4">
-      <div class="card-header d-flex align-items-center justify-content-between">
-        <span class="d-inline-flex align-items-center gap-2">
-          <i class="bi bi-sliders" aria-hidden="true"></i>{esc(translate("limits.title", lang))}
-        </span>
-        <span class="badge text-bg-dark">{len(findings)}</span>
-      </div>
-      {render_limits_card(findings, lang)}
-    </div>
 
     <div class="card mb-4">
       <div class="card-header d-flex align-items-center justify-content-between">
