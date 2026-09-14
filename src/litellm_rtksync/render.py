@@ -188,6 +188,23 @@ def format_timestamp_curto(value: Optional[str]) -> str:
     return momento.strftime("%d/%m %H:%M")
 
 
+def rodape_da_pathbit() -> str:
+    """A assinatura da casa, igual nos três painéis e em TODA tela.
+
+    Fora do catálogo de tradução de propósito: é nome próprio e assinatura de
+    empresa, não texto de interface -- e a própria linha já mistura as duas
+    línguas, como no modelo. O ano vem do relógio: um ano escrito à mão
+    envelhece em silêncio, e ninguém revisa rodapé.
+
+    O coração é `bi-heart-fill`, e não o emoji: o cabeçalho deste módulo fixa
+    "Bootstrap Icons, nunca emoji", e emoji muda de desenho conforme o sistema.
+    """
+    return f"""
+    <footer class="text-center text-secondary small py-3">
+      Feito com <i class="bi bi-heart-fill" style="color: var(--bs-purple)" aria-hidden="true"></i>
+      pela Pathbit - All rights reserved (c) {datetime.now().year}
+    </footer>"""
+
 def render_notice_page(title: str, body: str, link_label: str = "",
                        refresh_url: str = "", meta_refresh: str = "") -> bytes:
     """Pagina autonoma para respostas fora do painel autenticado.
@@ -273,6 +290,7 @@ def render_landing_page(lang: str = DEFAULT_LANGUAGE) -> bytes:
       <p class="mb-0"><a href="/">{esc(translate("auth.updated_link", lang))}</a></p>
     </div>
   </div>
+  {rodape_da_pathbit()}
 </body>
 </html>""".encode("utf-8")
 
@@ -406,6 +424,7 @@ def render_login_page(
       {botao_sso}
     </div>
   </main>
+  {rodape_da_pathbit()}
 </body>
 </html>""".encode("utf-8")
 
@@ -1724,14 +1743,8 @@ def render_dashboard(
         <i class="bi bi-clock-history me-1" aria-hidden="true"></i>{esc(translate("footer.generated", lang))}
         <span class="font-monospace">{esc(generated_at)}</span>
       </span>
-      <!-- Assinatura da casa, igual nos tres paineis e fora do catalogo de
-           traducao: e um nome proprio, nao um texto de interface. O ano vem do
-           relogio -- um ano escrito a mao envelhece em silencio. -->
-      <span class="w-100 text-center pt-2">
-        Feito com <i class="bi bi-heart-fill" style="color: var(--bs-purple)" aria-hidden="true"></i>
-        pela Pathbit - All rights reserved (c) {datetime.now().year}
-      </span>
     </footer>
+    {rodape_da_pathbit()}
   </div>
 
   <div class="modal fade" id="modalHistorico" tabindex="-1" aria-hidden="true">
