@@ -24,6 +24,8 @@ republishes these pages automatically. Editing a page directly here will be over
 | [Remote Access](Remote-Access) | Tunnel, Tailscale, and what has to be on before either |
 | [Egress Testing](Egress-Testing) | A bench that proves where the traffic actually leaves from |
 | [Rate Limit Coherence](Rate-Limit-Coherence) | The rule this project exists for: key ≤ team ≤ platform |
+| [Test Bench](Test-Bench) | Filling an empty proxy with real data, so the dashboard has something to report |
+| [Licensing and Capacity](Licensing-And-Capacity) | Sizing a team against a tier — and why "licence" is the wrong word here |
 | [Troubleshooting](Troubleshooting) | Concrete symptoms and what they actually mean |
 | [Upstream Fixes](Upstream-Fixes) | What was found in LiteLLM and reported upstream |
 
@@ -94,7 +96,7 @@ credential on first boot — read it and sign in as `admin`, then set a real
 password on the screen:
 
 ```bash
-docker exec litellm-rtksync cat /app/data/.dashboard_recovery
+docker exec litellmrtk-sync cat /app/data/.dashboard_recovery
 ```
 
 Full detail in [Authentication](Authentication).

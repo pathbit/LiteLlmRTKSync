@@ -1,4 +1,7 @@
-name: egress-test
+# Nome da stack no padrao das outras duas deste repositorio
+# (litellmrtksync-stack, litellmrtksync-test): o prefixo litellmrtk- e o dos
+# containers, nao o das stacks.
+name: litellmrtksync-egress
 
 # Bancada para testar POR ONDE o trafego sai.
 #
@@ -21,13 +24,13 @@ services:
   # se o vinculo por conta realmente separa as saidas.
   proxy-a:
     image: ubuntu/squid:latest
-    container_name: egress-proxy-a
+    container_name: litellmrtk-proxy-a
     restart: unless-stopped
     ports:
-      - "127.0.0.1:18081:3128"
+      - "127.0.0.1:18101:3128"
     networks:
       egress:
-        ipv4_address: 172.31.0.11
+        ipv4_address: 172.33.0.11
     healthcheck:
       # O que importa e a porta aceitar conexao: squidclient nao existe nesta
       # imagem, e um healthcheck que depende de binario ausente fica eternamente
@@ -39,13 +42,13 @@ services:
 
   proxy-b:
     image: ubuntu/squid:latest
-    container_name: egress-proxy-b
+    container_name: litellmrtk-proxy-b
     restart: unless-stopped
     ports:
-      - "127.0.0.1:18082:3128"
+      - "127.0.0.1:18102:3128"
     networks:
       egress:
-        ipv4_address: 172.31.0.12
+        ipv4_address: 172.33.0.12
     healthcheck:
       # O que importa e a porta aceitar conexao: squidclient nao existe nesta
       # imagem, e um healthcheck que depende de binario ausente fica eternamente
@@ -60,13 +63,13 @@ services:
   # direto da maquina.
   echo:
     image: python:3.12-alpine
-    container_name: egress-echo
+    container_name: litellmrtk-echo
     restart: unless-stopped
     ports:
-      - "127.0.0.1:18080:8080"
+      - "127.0.0.1:18100:8080"
     networks:
       egress:
-        ipv4_address: 172.31.0.20
+        ipv4_address: 172.33.0.20
     command:
       - python3
       - -c
@@ -100,6 +103,10 @@ services:
 
 networks:
   egress:
+    # Nome explicito, como na rede da stack principal. Sem ele a rede real se
+    # chama <nome-do-projeto>_egress, e o comando que a wiki manda rodar para
+    # ligar o gateway a bancada quebra em silencio a cada renomeacao da stack.
+    name: litellmrtksync-egress-net
     ipam:
       config:
-        - subnet: 172.31.0.0/24
+        - subnet: 172.33.0.0/24

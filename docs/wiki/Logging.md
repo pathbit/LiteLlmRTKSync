@@ -60,13 +60,13 @@ the credential. A credential in a log line is a credential published.
 
 ```bash
 # Follow the container output
-docker logs -f litellmrtksync
+docker logs -f litellmrtk-sync
 
 # The persistent file
-docker exec litellmrtksync cat /app/data/logs/litellmrtksync.log
+docker exec litellmrtk-sync cat /app/data/logs/litellmrtksync.log
 
 # Only the findings
-docker exec litellmrtksync grep -E "\[FALHA\]|\[AVISO\]" /app/data/logs/litellmrtksync.log
+docker exec litellmrtk-sync grep -E "\[FALHA\]|\[AVISO\]" /app/data/logs/litellmrtksync.log
 ```
 
 ---

@@ -1,20 +1,33 @@
 name: litellmrtksync-stack
 
-# Stack de exemplo: o proxy LiteLLM, o Postgres que ele exige e o
-# sincronizador. Mesma forma dos irmaos 9RTKSync e OminiRTkSync -- gateway,
-# banco do gateway e o sincronizador ao lado, com o painel preso ao loopback.
+# Stack de exemplo: o proxy LiteLLM, o Postgres que ele exige, o 9Router para
+# onde o proxy encadeia e o sincronizador. Mesma forma dos irmaos 9RTKSync e
+# OminiRTkSync -- gateway, banco do gateway e o sincronizador ao lado, com o
+# painel preso ao loopback.
+#
+# POR QUE ESTA STACK TEM O PROPRIO 9ROUTER
+#
+# Antes, o encadeamento do LiteLLM apontava para o `9rtk-router`, que pertence
+# a stack do 9RTKSync, pela rede de inferencia compartilhada. Funcionava e era
+# fragil: subir esta stack sozinha dava um proxy sem para onde encadear, e
+# derrubar a stack do vizinho quebrava a inferencia daqui sem que nada neste
+# arquivo tivesse mudado. Com o `litellmrtk-9router` aqui dentro, a stack sobe
+# inteira e funciona sozinha -- e o vizinho volta a ser opcional.
 #
 #   make setup    # cria o .env a partir do .env.example
 #   # preencha o .env
 #   docker compose -f docker-compose.example.yml up -d
 
 services:
-  postgres:
+  litellmrtk-db:
     # O LiteLLM guarda chaves virtuais, times e orcamentos em Postgres via
     # Prisma. Nao ha modo sem banco: sem ele o proxy sobe sem API administrativa,
     # e e justamente a API administrativa que este sincronizador le.
     image: postgres:16-alpine
-    container_name: litellmrtksync-db
+    container_name: litellmrtk-db
+    hostname: litellmrtk-db
+    networks:
+      - litellmrtksync-net
     restart: unless-stopped
     environment:
       - POSTGRES_USER=litellm
@@ -30,23 +43,107 @@ services:
       timeout: 5s
       retries: 20
 
-  litellm:
+  litellmrtk-9router:
+    # O gateway DESTA stack -- o mesmo programa que roda no 9RTKSync, mas uma
+    # instancia propria, com banco proprio, chave propria e ciclo de vida
+    # amarrado a este compose. E ele que o `litellmrtk-router` usa como provedor
+    # encadeado; o `9rtk-router` do vizinho deixou de fazer parte do caminho.
+    #
+    # Nome no padrao da stack (`litellmrtk-<papel>`), com servico =
+    # container_name = hostname, como nos demais: e por esse nome que o proxy o
+    # alcanca na rede interna, e e esse nome que aparece no `docker logs`.
+    image: decolua/9router:latest
+    container_name: litellmrtk-9router
+    hostname: litellmrtk-9router
+    networks:
+      # SO a rede de gestao desta stack. Nao entra na `rtk-inference-net` de
+      # proposito: a rede compartilhada existe para alcancar gateway de OUTRA
+      # stack, e este aqui e de casa. Mante-lo fora e o que torna o
+      # encadeamento independente de a rede externa existir e de o vizinho
+      # estar no ar.
+      - litellmrtksync-net
+    restart: unless-stopped
+    ports:
+      # Porta interna 20128 (padrao do 9Router); publicada em 8383 no host.
+      # Nao colide com nenhuma das que ja estao em uso -- 8081 do 9Router do
+      # 9RTKSync, 8082 do OmniRoute, 8083 deste proxy, 20128 da stack do artigo.
+      - "127.0.0.1:8383:20128"
+    environment:
+      - DATA_DIR=/app/data
+      - PORT=20128
+      - HOSTNAME=0.0.0.0
+      - NEXT_PUBLIC_BASE_URL=http://localhost:8383
+      - NODE_ENV=production
+      # Sem valor de fallback, pelo mesmo motivo da senha do Postgres acima: um
+      # default publicado em arquivo de exemplo vira a senha real de toda
+      # implantacao que so copiou e colou. O compose recusa subir enquanto as
+      # duas nao estiverem no .env, e a recusa nomeia a variavel, nunca o valor.
+      - INITIAL_PASSWORD=${INITIAL_PASSWORD:?defina INITIAL_PASSWORD no .env}
+      - JWT_SECRET=${JWT_SECRET:?defina JWT_SECRET no .env (openssl rand -hex 32)}
+      # Atencao: `false` NAO quer dizer "nao precisa de chave". O 9Router
+      # autoriza por peer -- o loopback e confiado, um vizinho de rede Docker
+      # nao e -- entao o proxy continua tendo de apresentar a chave emitida
+      # neste painel. Veja docs/wiki/Chaining-Gateways.md, secao 5.3.
+      - REQUIRE_API_KEY=false
+      # REQUIRE_LOGIN=false so e aceitavel porque a porta acima esta presa em
+      # 127.0.0.1. Ao expor a 20128 na rede, mude para true.
+      - REQUIRE_LOGIN=false
+    volumes:
+      # Volume proprio: contas, chaves e configuracao deste gateway nao se
+      # misturam com as do 9Router do vizinho, que vive noutro volume.
+      - litellmrtksync_9router:/app/data
+    healthcheck:
+      # `/api/health` devolve 200 com {"ok":true}. Nao use `/dashboard`: ele
+      # responde 307 (redireciona para o login) e um teste que aceita 307 passa
+      # a aceitar tambem um gateway que so sabe redirecionar.
+      test: ["CMD-SHELL", "node -e \"require('http').get('http://127.0.0.1:20128/api/health',r=>process.exit(r.statusCode===200?0:1)).on('error',()=>process.exit(1))\""]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+      start_period: 20s
+
+  litellmrtk-router:
     image: ghcr.io/berriai/litellm:main-stable
-    container_name: litellm
+    container_name: litellmrtk-router
+    hostname: litellmrtk-router
+    networks:
+      # Duas redes de proposito (ver o bloco `networks:` no fim do arquivo):
+      # a propria, de gestao, onde ficam o Postgres, o 9Router desta stack e o
+      # sincronizador -- e e por ela que o encadeamento acontece hoje, pelo
+      # nome `litellmrtk-9router`; e a de inferencia, que continua existindo
+      # so para alcancar gateway de OUTRA stack (`ominirtk-router`) e agora e
+      # opcional para o caminho principal.
+      - litellmrtksync-net
+      - rtk-inference-net
     restart: unless-stopped
     ports:
       # Porta interna 4000 (padrao do LiteLLM); publicada em 8083 no host.
-      # Cada gateway tem a sua porta no host -- 8081 9Router, 8082 OmniRoute,
-      # 8083 LiteLLM -- para que os tres rodem juntos, inclusive ao lado da
-      # stack do artigo, que fica com a 20128.
+      # Cada gateway tem a sua porta no host -- 8081 9Router do 9RTKSync,
+      # 8082 OmniRoute, 8083 este proxy, 8383 o 9Router desta stack -- para que
+      # todos rodem juntos, inclusive ao lado da stack do artigo, que fica com
+      # a 20128.
       - "127.0.0.1:8083:4000"
     environment:
-      - DATABASE_URL=postgresql://litellm:${POSTGRES_PASSWORD:?defina POSTGRES_PASSWORD no .env}@postgres:5432/litellm
+      - DATABASE_URL=postgresql://litellm:${POSTGRES_PASSWORD:?defina POSTGRES_PASSWORD no .env}@litellmrtk-db:5432/litellm
       - LITELLM_MASTER_KEY=${LITELLM_MASTER_KEY:?defina LITELLM_MASTER_KEY no .env}
       - LITELLM_SALT_KEY=${LITELLM_SALT_KEY:?defina LITELLM_SALT_KEY no .env (openssl rand -hex 32)}
       - STORE_MODEL_IN_DB=True
+      # Credencial da UI do LiteLLM. Sem estas duas, a tela de login aceita a
+      # MASTER_KEY como senha -- ou seja, para ver um painel o operador digita
+      # a credencial que administra a instalacao inteira.
+      - UI_USERNAME=${DASHBOARD_USER:-admin}
+      - UI_PASSWORD=${DASHBOARD_PASSWORD:?defina DASHBOARD_PASSWORD no .env}
+      # Chaves dos provedores, para o proxy resolver `os.environ/NOME` quando um
+      # modelo ou uma credencial nomeada aponta para o ambiente em vez de gravar
+      # o segredo no banco. Vazias por padrao: quem nao usa o provedor nao
+      # precisa da variavel, e o modelo daquele provedor simplesmente nao sobe.
+      - ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY:-}
+      - GEMINI_API_KEY=${GEMINI_API_KEY:-}
+      - GROQ_API_KEY=${GROQ_API_KEY:-}
+      - MISTRAL_API_KEY=${MISTRAL_API_KEY:-}
+      - OPENROUTER_API_KEY=${OPENROUTER_API_KEY:-}
     depends_on:
-      postgres:
+      litellmrtk-db:
         condition: service_healthy
     healthcheck:
       # Esperar o proxy ficar saudavel, e nao apenas iniciado: o LiteLLM roda as
@@ -61,9 +158,12 @@ services:
       retries: 20
       start_period: 60s
 
-  litellmrtksync:
+  litellmrtk-sync:
     image: ghcr.io/pathbit/litellmrtksync:latest
-    container_name: litellmrtksync
+    container_name: litellmrtk-sync
+    hostname: litellmrtk-sync
+    networks:
+      - litellmrtksync-net
     restart: unless-stopped
     ports:
       # Porta interna 9090, igual nos tres sincronizadores; publicada em 9093 no
@@ -73,7 +173,7 @@ services:
     volumes:
       - litellmrtksync_data:/app/data
     environment:
-      - LITELLM_URL=http://litellm:4000
+      - LITELLM_URL=http://litellmrtk-router:4000
       - LITELLM_MASTER_KEY=${LITELLM_MASTER_KEY:?defina LITELLM_MASTER_KEY no .env}
       - DATA_DIR=/app/data
       - SYNC_INTERVAL=${SYNC_INTERVAL:-300}
@@ -90,13 +190,18 @@ services:
       # ela esta, nunca o valor.
       - DASHBOARD_USER=${DASHBOARD_USER:-admin}
       - DASHBOARD_PASSWORD=${DASHBOARD_PASSWORD:-}
+      # Acesso federado. O resto da configuracao e pela tela; aqui so o segredo
+      # (que o ambiente sobrepoe ao arquivo 0600) e o interruptor de emergencia,
+      # que precisa funcionar exatamente quando o painel nao abre.
+      - OIDC_CLIENT_SECRET=${OIDC_CLIENT_SECRET:-}
+      - SSO_DISABLED=${SSO_DISABLED:-0}
       - CREDENTIAL_CHECK_ENABLED=${CREDENTIAL_CHECK_ENABLED:-1}
       - CREDENTIAL_CHECK_TIMEOUT=${CREDENTIAL_CHECK_TIMEOUT:-8}
       - LOG_DIR=${LOG_DIR:-/app/data/logs}
       - LOG_RETENTION_DAYS=${LOG_RETENTION_DAYS:-30}
       - LOG_LEVEL=${LOG_LEVEL:-INFO}
     depends_on:
-      litellm:
+      litellmrtk-router:
         condition: service_healthy
     healthcheck:
       test: ["CMD", "/opt/venv/bin/python3", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:9090/healthz', timeout=3)"]
@@ -105,6 +210,120 @@ services:
       retries: 3
       start_period: 10s
 
+  # --- Acesso remoto (opcional, nao sobe por padrao) -----------------------
+  #
+  # Os dois servicos abaixo so existem quando voce pede o perfil:
+  #   docker compose --profile tunel   up -d   # URL publica via Cloudflare
+  #   docker compose --profile tailnet up -d   # so quem esta na sua tailnet
+  #
+  # ANTES DE LIGAR QUALQUER UM DOS DOIS, leia docs/wiki/Remote-Access.md. O
+  # resumo: com a porta presa em 127.0.0.1, REQUIRE_LOGIN=false e aceitavel
+  # porque so a sua maquina alcanca. No instante em que um tunel sobe, esse
+  # raciocinio se inverte -- e o proprio painel do gateway avisa isso em
+  # vermelho ("Change the default dashboard password before activating the
+  # tunnel").
+  litellmrtk-tunel:
+    # Um container em vez do botao do gateway: o botao instala o cloudflared
+    # DENTRO do container do gateway, que e efemero -- recriar a stack desfaz a
+    # instalacao. Aqui o tunel e uma peca declarada, que sobe e desce com o
+    # resto e deixa rastro no compose.
+    image: cloudflare/cloudflared:latest
+    container_name: litellmrtk-tunel
+    hostname: litellmrtk-tunel
+    profiles: ["tunel"]
+    restart: unless-stopped
+    # Sem TUNNEL_TOKEN: quick tunnel, URL aleatoria a cada subida, zero
+    # configuracao, boa para uma demonstracao. Com TUNNEL_TOKEN de um tunel
+    # nomeado: URL estavel e a possibilidade de por o Cloudflare Access na
+    # frente, que autentica ANTES de a requisicao chegar no gateway.
+    command: >-
+      tunnel --no-autoupdate
+      ${TUNNEL_TOKEN:+run --token ${TUNNEL_TOKEN}}
+      ${TUNNEL_TOKEN:---url http://litellmrtk-router:4000}
+    networks:
+      - litellmrtksync-net
+    depends_on:
+      - litellmrtk-router
+
+  litellmrtk-tailnet:
+    # Diferenca que decide a escolha: o tunel da uma URL que QUALQUER UM com o
+    # endereco alcanca; a tailnet so admite dispositivo que voce cadastrou.
+    # Para um painel que le credenciais, a segunda e quase sempre a certa.
+    image: tailscale/tailscale:latest
+    container_name: litellmrtk-tailnet
+    # UNICA excecao a regra "container_name igual ao hostname" desta stack, e de
+    # proposito: o hostname deste container vira o NOME DO NO na tailnet, ou seja,
+    # o endereco que voce digita no navegador (http://litellmrtk:9090). Com
+    # `litellmrtk-tailnet` viraria http://litellmrtk-tailnet:9090 -- mais longo de
+    # digitar, e sem ganho nenhum, porque dentro da stack ninguem alcanca este
+    # container pelo nome: ele existe para expor o painel para FORA.
+    hostname: litellmrtk
+    profiles: ["tailnet"]
+    restart: unless-stopped
+    environment:
+      # Gere em https://login.tailscale.com/admin/settings/keys (chave efemera,
+      # para o no sumir sozinho quando o container morrer). Sem `:?` de
+      # proposito: o compose interpola tudo ANTES de filtrar por perfil, entao
+      # exigir aqui cobraria a chave ate de quem nunca vai usar este perfil.
+      # Quem cobra e o proprio container, na partida, e so quando o perfil sobe.
+      - TS_AUTHKEY=${TS_AUTHKEY:-}
+      - TS_STATE_DIR=/var/lib/tailscale
+      - TS_USERSPACE=true
+      # Publica o painel e o gateway na tailnet, cada um na sua porta.
+      - TS_SERVE_CONFIG=/config/serve.json
+    volumes:
+      - litellmrtk_tailnet:/var/lib/tailscale
+    networks:
+      - litellmrtksync-net
+
 volumes:
+  litellmrtk_tailnet:
   litellmrtksync_db:
   litellmrtksync_data:
+  # Contas, chaves e configuracao do 9Router desta stack. Apagar este volume
+  # (`docker compose down -v`) apaga a chave que o `.env` guarda em
+  # NINEROUTER_API_KEY -- o arquivo continua com o valor antigo e a inferencia
+  # passa a responder 401. Veja docs/wiki/Chaining-Gateways.md, secao 5.4.
+  litellmrtksync_9router:
+
+networks:
+  litellmrtksync-net:
+    name: litellmrtksync-net
+    # Rede propria da stack. Na rede default, duas stacks no mesmo
+    # daemon resolvem o mesmo nome curto e nao da para saber a qual
+    # gateway o sincronizador se conectou.
+
+  # POR QUE SAO DUAS REDES
+  #
+  # A de cima e de GESTAO e e a rede de casa: Postgres, 9Router desta stack,
+  # proxy e sincronizador. Ela continua isolada das outras stacks -- e isso que
+  # garante que o painel do LiteLlmRTKSync nunca leia, sem querer, o gateway de
+  # um irmao; antes, com todos na rede default, o mesmo nome curto resolvia
+  # para stacks diferentes e ninguem sabia a qual gateway o painel estava
+  # conectado. Nao desfaca.
+  #
+  # E e por ELA que o encadeamento principal passa hoje: o proxy alcanca
+  # http://litellmrtk-9router:20128/v1 sem sair de casa. Foi a mudanca que
+  # tornou esta stack autossuficiente -- antes o caminho dependia da rede
+  # abaixo e de um container de outra stack estar no ar.
+  #
+  # A de baixo e de INFERENCIA e e compartilhada de proposito. Ela responde ao
+  # sintoma "nao consigo conectar o LiteLLM com um gateway de OUTRA stack":
+  # sem ela, `getent hosts ominirtk-router` de dentro deste container nao
+  # resolve nada, porque cada stack vive so na sua rede. Com ela, um deployment
+  # pode apontar para http://ominirtk-router:20128/v1 ou http://9rtk-router:20128/v1.
+  # Atencao: 127.0.0.1:8082 NAO serve de api_base -- dentro deste container o
+  # loopback e o proprio LiteLLM. Tem de ser o nome do servico.
+  #
+  # So os gateways e este proxy entram nela; os sincronizadores NAO -- eles nao
+  # tem o que fazer no caminho de inferencia, e mante-los de fora preserva o
+  # isolamento de gestao. O `litellmrtk-9router` tambem fica de fora: ele e de
+  # casa, e por a-lo numa rede compartilhada so o exporia as outras stacks sem
+  # dar nada em troca.
+  #
+  # `external: true` porque a rede e compartilhada pelas tres stacks: ela nao
+  # pertence a nenhuma, nasce e morre fora do ciclo de vida de qualquer uma:
+  #     docker network create rtk-inference-net
+  rtk-inference-net:
+    name: rtk-inference-net
+    external: true

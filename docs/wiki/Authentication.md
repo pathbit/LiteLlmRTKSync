@@ -21,7 +21,7 @@ leaving the operator convinced of a password that does not work.
 To change it: edit the environment and recreate the container.
 
 ```bash
-docker compose up -d --force-recreate litellmrtksync
+docker compose -f docker-compose.example.yml up -d --force-recreate litellmrtk-sync
 ```
 
 ### Stored mode — `DASHBOARD_PASSWORD` is empty
@@ -49,7 +49,7 @@ and read by people who should not have the credential.
 Read it, sign in as `admin` with it, and set your own password on the screen.
 
 ```bash
-docker exec litellmrtksync cat /app/data/.dashboard_recovery
+docker exec litellmrtk-sync cat /app/data/.dashboard_recovery
 ```
 
 ### It keeps working after you set a password

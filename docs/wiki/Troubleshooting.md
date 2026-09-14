@@ -26,15 +26,15 @@ up and the proxy is not. See the next entry.
 The panel is running; the proxy is not answering `/health/liveliness`. In order of likelihood:
 
 1. **Wrong address.** Inside Compose, `LITELLM_URL` must be the *service name*
-   (`http://litellm:4000`), not `localhost` — `localhost` inside the synchronizer's container is
+   (`http://litellmrtk-router:4000`), not `localhost` — `localhost` inside the synchronizer's container is
    the synchronizer itself.
 2. **The proxy is still booting.** LiteLLM runs Prisma migrations on first start; it can take
    more than a minute. `start_period` on its healthcheck should allow for that.
 3. **The proxy is genuinely down.**
 
 ```bash
-docker exec litellmrtksync /opt/venv/bin/python3 -c \
-  "import urllib.request;print(urllib.request.urlopen('http://litellm:4000/health/liveliness',timeout=5).status)"
+docker exec litellmrtk-sync /opt/venv/bin/python3 -c \
+  "import urllib.request;print(urllib.request.urlopen('http://litellmrtk-router:4000/health/liveliness',timeout=5).status)"
 ```
 
 ---
@@ -87,7 +87,7 @@ The panel says so explicitly rather than accepting a change it would lose on the
 Change the variable and recreate the container:
 
 ```bash
-docker compose up -d --force-recreate litellmrtksync
+docker compose -f docker-compose.example.yml up -d --force-recreate litellmrtk-sync
 ```
 
 See [Authentication](Authentication).
@@ -99,7 +99,7 @@ See [Authentication](Authentication).
 The **recovery credential** stays valid after a normal password is set, precisely for this:
 
 ```bash
-docker exec litellmrtksync cat /app/data/.dashboard_recovery
+docker exec litellmrtk-sync cat /app/data/.dashboard_recovery
 ```
 
 Sign in as `admin` with that value and set a new password on the screen.

@@ -18,8 +18,9 @@ Uma citação que não se confirma é reportada com a página e a linha.
 
 import os
 import re
+import subprocess
 import sys
-from typing import Dict, List, Set, Tuple
+from typing import Dict, Iterable, List, Set, Tuple
 
 # --------------------------------------------------------------------------
 # Extração da documentação
@@ -34,8 +35,11 @@ RX_PORTA = re.compile(r"(?<![\w.:])(\d{4,5})(?![\w.])")
 
 # Linha que invoca outro programa: as flags citadas pertencem a ele.
 RX_COMANDO_DE_TERCEIRO = re.compile(
+    # `apk` é o gerenciador de pacotes do Alpine, e entra pela mesma razão do
+    # `apt`: a página de acesso federado mostra as linhas que instalam a
+    # biblioteca de SAML na imagem, e `--no-cache` e `--virtual` são flags DELE.
     r"\b(pip|pip3|docker|docker[- ]compose|git|curl|wget|tailscale|cloudflared|make|npm|npx|"
-    r"apt|apt-get|brew|systemctl|python3?\s+-m\s+venv|openssl|psql)\b"
+    r"apt|apt-get|apk|brew|systemctl|python3?\s+-m\s+venv|openssl|psql)\b"
 )
 
 # Flags que pertencem a outro programa e aparecem em prosa, sem o comando na
@@ -44,6 +48,12 @@ RX_COMANDO_DE_TERCEIRO = re.compile(
 FLAGS_DE_TERCEIROS = {
     "--advertise-exit-node", "--exit-node",   # tailscale
     "--help", "--version",                    # universais
+    # docker compose: a doc de acesso remoto explica como subir os servicos
+    # opcionais de tunel e tailnet, e essas flags sao do compose, nao do
+    # CLI deste produto.
+    "--profile", "--env-file", "--remove-orphans", "--wait",
+    "--wait-timeout", "--force-recreate", "--no-autoupdate", "--url",
+    "--token", "-d", "-f",
 }
 
 # Rotas do GATEWAY, nao do painel. A pagina de saida de rede cita a API do
@@ -53,6 +63,26 @@ RX_ROTA_DO_GATEWAY = re.compile(r"(?i)\b(9router|omniroute|litellm|gateway|proxy
 NAO_SAO_VARIAVEIS = {
     "HTTP_PROXY", "HTTPS_PROXY", "NO_PROXY",  # padrão do sistema, não do projeto
 }
+
+# Variáveis que pertencem a OUTRO programa e são citadas de propósito -- a
+# contraparte de FLAGS_DE_TERCEIROS, pela mesma razão. A página de
+# dimensionamento precisa nomear a flag que devolve o limitador legado do
+# LiteLLM upstream, porque é esse o nome que o operador vai procurar na
+# implantação dele; o proxy é outro programa, então o nome nunca vai aparecer
+# no fonte deste repositório.
+#
+# Lista nomeada, e não padrão: cada entrada diz de onde veio, e uma variável
+# nossa escrita errada continua sendo acusada.
+VARIAVEIS_DE_TERCEIROS = {
+    # litellm/proxy/hooks/__init__.py:31, LiteLLM 1.102.0
+    "LEGACY_MULTI_INSTANCE_RATE_LIMITING",
+    # Flag dos composes do 9RTKSync e do OminiRTkSync. A pagina de encadeamento
+    # precisa nomea-la porque ela e uma armadilha: quem le `REQUIRE_API_KEY=false`
+    # conclui que nao precisa de chave, enquanto o 9Router autoriza por peer e
+    # responde 401 a qualquer vizinho de rede. O nome nunca vai existir no fonte
+    # deste repositorio -- a flag e de outro programa.
+    "REQUIRE_API_KEY",
+}
 # Siglas em caixa alta que aparecem em prosa e não são variáveis.
 RUIDO = re.compile(
     r"^(HTTP_?\d*|JSON_?\w*|API_?KEY_?\w*|SQL\w*|UTC_?\w*|README\w*|TODO\w*|NOTE\w*|"
@@ -60,35 +90,92 @@ RUIDO = re.compile(
 )
 
 
+# Diretórios que a varredura de emergência ignora. O `.git` e os upstreams
+# clonados nunca são fonte; `assets` guarda binário.
+PASTAS_IGNORADAS = {".git", "tmp", "node_modules", "__pycache__", ".venv", "assets"}
+
+
+# Módulo Python citado na documentação: `render.py`, `client.py`. A crase é
+# opcional porque tabela de arquitetura costuma escrever sem ela.
+RX_MODULO = re.compile(r"\b([a-z_][a-z0-9_]*\.py)\b")
+
+# Módulos que pertencem a OUTRO projeto e são citados de propósito. Mesma razão
+# de FLAGS_DE_TERCEIROS: o arquivo é real, só não é deste repositório.
+MODULOS_DE_TERCEIROS = {
+    "setup.py",       # convenção de empacotamento, citada em instruções de build
+    "manage.py",      # Django, aparece em comparação de layout
+    "conftest.py",    # pytest; pode ser citado como recomendação sem existir aqui
+    "proxy_server.py",  # LiteLLM upstream
+    "main.py",        # ponto de entrada do upstream em exemplos de implantação
+    # Os dois limitadores do LiteLLM upstream. A página de dimensionamento tem
+    # de nomeá-los porque é esse o arquivo que o operador vai procurar na
+    # implantação dele -- e ele nunca vai existir neste repositório.
+    "parallel_request_limiter.py",
+    "parallel_request_limiter_v3.py",
+}
+
+
+def arquivos_do_repo(raiz: str, extensoes: Tuple[str, ...]) -> List[str]:
+    """Arquivos do repositório com essas extensões — só os que são FONTE.
+
+    Quem decide o que é fonte é o git, e não o disco: `--cached` traz o que está
+    versionado, `--others --exclude-standard` traz o que ainda não foi commitado
+    mas também não está ignorado (uma página de wiki recém-escrita, por exemplo),
+    e o `.gitignore` exclui sozinho o que é artefato de execução.
+
+    Isso não é preciosismo. Rodar a suíte cria `.pytest_cache/README.md`, que
+    fala das flags `--lf` e `--ff` do pytest: varrendo o disco, o verificador
+    acusava o próprio cache de citar flags que este CLI não tem, e a suíte
+    passava ou falhava conforme já se tivesse rodado antes.
+    """
+    try:
+        saida = subprocess.run(
+            ["git", "-C", raiz, "ls-files", "-z", "--cached", "--others", "--exclude-standard"],
+            capture_output=True, check=True, timeout=30,
+        ).stdout.decode("utf-8", errors="replace")
+        caminhos: Iterable[str] = (p for p in saida.split("\0") if p)
+        achados = [
+            os.path.join(raiz, p) for p in caminhos
+            if p.endswith(extensoes) and not set(p.split(os.sep)) & PASTAS_IGNORADAS
+        ]
+    except (OSError, subprocess.SubprocessError):
+        # Sem git disponível, cai para o disco. Aqui os diretórios ocultos
+        # também saem: é neles que moram os caches de ferramenta.
+        achados = []
+        for pasta, dirs, arquivos in os.walk(raiz):
+            dirs[:] = [
+                d for d in dirs
+                if d not in PASTAS_IGNORADAS and not (d.startswith(".") and d != ".github")
+            ]
+            achados += [os.path.join(pasta, a) for a in arquivos if a.endswith(extensoes)]
+    return sorted(achados)
+
+
 def paginas(raiz: str) -> List[str]:
     """Todo markdown versionado do repositório, menos os upstreams clonados."""
-    achados = []
-    for pasta, dirs, arquivos in os.walk(raiz):
-        dirs[:] = [
-            d for d in dirs
-            if d not in (".git", "tmp", "node_modules", "__pycache__", ".venv", "assets")
-        ]
-        for a in arquivos:
-            if a.endswith(".md"):
-                achados.append(os.path.join(pasta, a))
-    return sorted(achados)
+    return arquivos_do_repo(raiz, (".md",))
+
+
+def modulos_do_repo(raiz: str) -> Set[str]:
+    """Nome de arquivo de todo módulo Python que existe aqui.
+
+    Só o basename: a documentação cita `render.py`, não o caminho inteiro, e
+    quem lê quer saber se o arquivo existe, não onde exatamente ele mora.
+    """
+    return {os.path.basename(c) for c in arquivos_do_repo(raiz, (".py",))}
 
 
 def fonte_do_repo(raiz: str) -> str:
     """Todo o código Python e YAML do repositório, concatenado."""
     partes = []
-    for pasta, dirs, arquivos in os.walk(raiz):
-        dirs[:] = [
-            d for d in dirs
-            if d not in (".git", "tmp", "node_modules", "__pycache__", ".venv")
-        ]
-        for a in arquivos:
-            if a.endswith((".py", ".yml", ".yaml", ".toml", ".cfg", ".sh", ".example")):
-                try:
-                    with open(os.path.join(pasta, a), encoding="utf-8") as f:
-                        partes.append(f.read())
-                except (OSError, UnicodeDecodeError):
-                    pass
+    for caminho in arquivos_do_repo(
+        raiz, (".py", ".yml", ".yaml", ".toml", ".cfg", ".sh", ".example")
+    ):
+        try:
+            with open(caminho, encoding="utf-8") as f:
+                partes.append(f.read())
+        except (OSError, UnicodeDecodeError):
+            pass
     return "\n".join(partes)
 
 
@@ -127,6 +214,7 @@ def verificar(raiz: str, nome: str) -> List[str]:
     env_ok = env_do_codigo(fonte)
     flags_ok = flags_do_codigo(fonte)
     rotas_ok = rotas_do_codigo(fonte)
+    modulos_ok = modulos_do_repo(raiz)
 
     for pagina in paginas(raiz):
         rel = os.path.relpath(pagina, raiz)
@@ -138,15 +226,34 @@ def verificar(raiz: str, nome: str) -> List[str]:
 
         for n, linha in enumerate(linhas, 1):
             for var in RX_ENV.findall(linha):
-                if var in NAO_SAO_VARIAVEIS or RUIDO.match(var):
+                if var in NAO_SAO_VARIAVEIS or var in VARIAVEIS_DE_TERCEIROS:
+                    continue
+                if RUIDO.match(var):
                     continue
                 # Codigo de log, nao variavel: TCP_TUNNEL/200, HIER_DIRECT/1.2.3.4
                 # e NONE_NONE/000 aparecem em trecho de log colado na pagina, e
                 # sempre com uma barra logo depois.
                 if re.search(re.escape(var) + r"/", linha):
                     continue
+                # Tag de log entre colchetes, tambem colada de saida real:
+                # `[SKILLS_INJECTION] {"apiKeyId":...}` no log do OmniRoute. E
+                # rotulo do proprio log, nunca variavel de ambiente.
+                if re.search(r"\[" + re.escape(var) + r"\]", linha):
+                    continue
                 if var not in env_ok:
                     problemas.append(f"{nome}/{rel}:{n}  variável citada e não usada no código: {var}")
+
+            # Módulo que a página descreve e que não existe mais. É o erro que
+            # a convergência dos irmãos produz em série: um módulo é fundido
+            # noutro, o código continua verde porque ninguém importa o nome
+            # velho, e a tabela de arquitetura segue descrevendo um arquivo
+            # apagado. Quem lê a wiki procura o arquivo e não acha.
+            for modulo in RX_MODULO.findall(linha):
+                if modulo in MODULOS_DE_TERCEIROS or modulo in modulos_ok:
+                    continue
+                problemas.append(
+                    f"{nome}/{rel}:{n}  módulo citado e inexistente no repositório: {modulo}"
+                )
 
             # Uma linha que invoca outro programa traz as flags DELE. Acusar
             # `pip install --upgrade` de nao existir no nosso CLI e ruido, e

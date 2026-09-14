@@ -22,7 +22,40 @@ ENV_EXAMPLE = RAIZ_REPO / ".env.example"
 
 # Variaveis da stack de teste (docker-compose.test.yml), lidas pelo Postgres e
 # pelo proprio LiteLLM -- nao por este programa.
-DO_GATEWAY = {"POSTGRES_PASSWORD", "LITELLM_SALT_KEY"}
+#
+# As chaves de provedor entram na mesma categoria: o compose as repassa ao
+# container do PROXY, que e quem resolve `os.environ/NOME` quando um modelo
+# aponta para o ambiente. O sincronizador nunca as le -- e nao deve: ele relata
+# de onde vem a credencial, nunca qual e ela. Quem tambem as le e a bancada de
+# teste (tools/popula_bancada.py), que roda fora do pacote.
+DO_GATEWAY = {
+    "POSTGRES_PASSWORD",
+    "LITELLM_SALT_KEY",
+    "ANTHROPIC_API_KEY",
+    "GEMINI_API_KEY",
+    "GROQ_API_KEY",
+    "MISTRAL_API_KEY",
+    "OPENROUTER_API_KEY",
+}
+
+# Lidas pelo COMPOSE, não pelo código Python: alimentam os serviços opcionais de
+# acesso remoto (perfis `tunel` e `tailnet`) e o 9Router desta stack
+# (`litellmrtk-9router`, o gateway para onde o proxy encadeia). Precisam estar
+# anunciadas no exemplo -- é lá que o operador descobre que existem -- mas
+# nenhum os.environ daqui as procura, e é isso que a varredura acima mede.
+#
+# INITIAL_PASSWORD e JWT_SECRET são obrigatórias no compose (`:?`): sem elas a
+# stack recusa subir. Continuam fora do código Python porque quem as consome é
+# o container do gateway, não o sincronizador.
+DO_COMPOSE = {"TUNNEL_TOKEN", "TS_AUTHKEY", "INITIAL_PASSWORD", "JWT_SECRET"}
+
+# Credenciais que este proxy APRESENTA aos gateways irmaos (9Router e
+# OmniRoute) quando usa um deles como provedor. Mesma categoria das chaves de
+# provedor acima, e pelo mesmo motivo: quem as le e a ferramenta de
+# `tools/registra_gateways.py`, que roda fora do pacote e as entrega ao proxy
+# uma unica vez como credencial nomeada. O sincronizador nunca as le -- ele
+# relata de onde vem a credencial, nunca qual e ela.
+DOS_GATEWAYS_IRMAOS = {"NINEROUTER_API_KEY", "OMNIROUTE_API_KEY"}
 
 LEITURA = re.compile(r'os\.(?:environ\.get|getenv)\(\s*["\']([A-Z0-9_]+)["\']')
 INDICE = re.compile(r'os\.environ\[\s*["\']([A-Z0-9_]+)["\']')
@@ -59,7 +92,10 @@ class TestDocumentacaoDeAmbiente(unittest.TestCase):
         )
 
     def test_the_example_documents_nothing_the_code_ignores(self):
-        sobrando = sorted(variaveis_documentadas() - variaveis_lidas() - DO_GATEWAY)
+        sobrando = sorted(
+            variaveis_documentadas() - variaveis_lidas()
+            - DO_GATEWAY - DO_COMPOSE - DOS_GATEWAYS_IRMAOS
+        )
         self.assertEqual(
             sobrando, [],
             "variaveis no .env.example que programa nenhum le: " + ", ".join(sobrando),
@@ -72,8 +108,10 @@ class TestDocumentacaoDeAmbiente(unittest.TestCase):
             r'^(?!#)\s*([A-Z0-9_]*(?:PASSWORD|SECRET|TOKEN|KEY)[A-Z0-9_]*)=(.+)$',
             texto, re.M,
         )
-        # Interruptor nao e segredo: REQUIRE_API_KEY=false diz o que o gateway
-        # deve fazer, nao qual e a chave.
+        # Interruptor nao e segredo: um nome que casa com KEY so por conter a
+        # palavra, e cujo valor e liga/desliga, diz o que o programa deve fazer
+        # -- nao qual e a chave. Sem esta excecao o teste acusaria de credencial
+        # publicada qualquer interruptor assim que ele aparecesse no exemplo.
         INTERRUPTORES = {"true", "false", "0", "1", "yes", "no", "on", "off"}
         com_valor = [
             f"{nome}={valor.strip()}"

@@ -1,9 +1,10 @@
-"""Configuração do LiteLlmRTKSync, toda por variável de ambiente."""
+"""Configuração deste sincronizador, toda por variável de ambiente."""
 
 import os
 from dataclasses import dataclass, field
 from typing import Optional, Tuple
 
+from .identidade import PREFIXO_DE_CONTAINER
 from .auth import (
     AUTH_PASSWORD_KEY,
     AUTH_USER_KEY,
@@ -24,12 +25,21 @@ def _flag(nome: str, padrao: str = "1") -> bool:
     return os.environ.get(nome, padrao).strip().lower() in ("1", "true", "yes", "on")
 
 
+# Endereço padrão do gateway: o nome de serviço do compose DESTE repositório.
+# O prefixo vem da identidade para que os três não colidam na mesma rede.
+URL_PADRAO_DO_GATEWAY = f"http://{PREFIXO_DE_CONTAINER}router:4000"
+
+
 @dataclass
 class Settings:
     """Tudo que o sincronizador precisa saber, e nada que ele deva adivinhar."""
 
     # -- proxy --------------------------------------------------------------
-    litellm_url: str = "http://litellm:4000"
+    # O default é o nome de serviço do compose deste repositório, e não um nome
+    # curto genérico: sem LITELLM_URL definida este valor chega à tela, no cartão
+    # de liveness, e um endereço que não resolve em rede nenhuma ensina errado
+    # quem só olhou o painel.
+    litellm_url: str = URL_PADRAO_DO_GATEWAY
     master_key: str = ""
 
     # -- ciclo --------------------------------------------------------------
@@ -76,7 +86,7 @@ class Settings:
         senha = env_pass or ""
 
         return cls(
-            litellm_url=os.environ.get("LITELLM_URL", "http://litellm:4000").rstrip("/"),
+            litellm_url=os.environ.get("LITELLM_URL", URL_PADRAO_DO_GATEWAY).rstrip("/"),
             master_key=os.environ.get("LITELLM_MASTER_KEY", ""),
             sync_interval=int(os.environ.get("SYNC_INTERVAL", "300")),
             refresh_margin=int(os.environ.get("REFRESH_MARGIN", "900")),
@@ -123,6 +133,18 @@ class Settings:
 
     def get_recovery_file_path(self) -> str:
         return os.path.join(self.get_data_dir(), RECOVERY_FILE_NAME)
+
+    def get_sso_secret_path(self) -> str:
+        """Segredo do cliente OIDC, no MESMO diretorio da credencial de
+        recuperacao e com a mesma permissao 0600.
+
+        Este projeto nao tem SQLite de gateway -- os irmaos derivam o diretorio
+        do banco deles. Aqui a unica fonte e DATA_DIR, que e o volume onde tudo
+        que este processo escreve ja mora.
+        """
+        from .sso import ARQUIVO_DO_SEGREDO
+
+        return os.path.join(self.get_data_dir(), ARQUIVO_DO_SEGREDO)
 
     def get_log_dir(self) -> str:
         return os.environ.get("LOG_DIR") or os.path.join(self.get_data_dir(), "logs")

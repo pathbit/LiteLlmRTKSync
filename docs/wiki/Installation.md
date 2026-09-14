@@ -10,11 +10,20 @@ for development. Both need the same two things — the proxy's address and its m
 The synchronizer needs no volume of its own for state it must keep beyond the data directory, and
 it never touches the proxy's Postgres. It talks to the administrative API.
 
+The block below is the synchronizer's half of
+[`docker-compose.example.yml`](https://github.com/pathbit/LiteLlmRTKSync/blob/master/docker-compose.example.yml),
+where the proxy service `litellmrtk-router` and its database `litellmrtk-db` are declared in
+full. Service, container and hostname carry the same name, so the address you read is the
+address that resolves.
+
 ```yaml
 services:
-  litellmrtksync:
+  litellmrtk-sync:
     image: ghcr.io/pathbit/litellmrtksync:latest
-    container_name: litellmrtksync
+    container_name: litellmrtk-sync
+    hostname: litellmrtk-sync
+    networks:
+      - litellmrtksync-net
     restart: unless-stopped
     ports:
       # Porta interna 9090, igual nos tres sincronizadores; publicada em 9093
@@ -24,7 +33,7 @@ services:
     volumes:
       - litellmrtksync_data:/app/data
     environment:
-      - LITELLM_URL=http://litellm:4000
+      - LITELLM_URL=http://litellmrtk-router:4000
       - LITELLM_MASTER_KEY=${LITELLM_MASTER_KEY:?defina LITELLM_MASTER_KEY no .env}
       - SYNC_INTERVAL=${SYNC_INTERVAL:-300}
       - REFRESH_MARGIN=${REFRESH_MARGIN:-900}
@@ -36,7 +45,7 @@ services:
       - DASHBOARD_USER=${DASHBOARD_USER:-admin}
       - DASHBOARD_PASSWORD=${DASHBOARD_PASSWORD:-}
     depends_on:
-      litellm:
+      litellmrtk-router:
         condition: service_healthy
     healthcheck:
       test: ["CMD", "/opt/venv/bin/python3", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:9090/healthz', timeout=3)"]
@@ -47,9 +56,16 @@ services:
 
 volumes:
   litellmrtksync_data:
+
+networks:
+  litellmrtksync-net:
+    # Rede propria da stack, com nome explicito. Na rede default, duas stacks no
+    # mesmo daemon resolvem o mesmo nome curto e nao da para saber a qual
+    # gateway o sincronizador se conectou.
+    name: litellmrtksync-net
 ```
 
-Two details worth not skipping:
+Three details worth not skipping:
 
 **`condition: service_healthy`, not `service_started`.** LiteLLM runs its Prisma migrations
 during boot; a cycle that starts before that finds an API that answers but has no tables yet.
@@ -58,6 +74,10 @@ The proxy needs a `healthcheck` of its own for this condition to have anything t
 **No fallback value on the secrets.** `${LITELLM_MASTER_KEY:?...}` makes the stack refuse to
 start without it. A default published in an example file becomes the real secret of every
 deployment that copied and pasted.
+
+**A named network of its own, not the implicit default.** On the default network two stacks in
+the same daemon resolve the same short name, and there is no way to tell which gateway the
+synchronizer actually reached.
 
 ### Running the bundled test stack
 
@@ -68,8 +88,15 @@ cp .env.example .env    # fill LITELLM_MASTER_KEY, POSTGRES_PASSWORD, LITELLM_SA
 docker compose -f docker-compose.test.yml up -d
 ```
 
-Everything binds to loopback and the project name is its own, so it never collides with a stack
-you already have running.
+Everything binds to loopback, and both the project name and the network name are its own
+(`litellmrtksync-test`, `litellmrtksync-test-net`), so it never collides with a stack you
+already have running — not even with `docker-compose.example.yml`, whose services answer to the
+very same hostnames.
+
+The containers in this stack are named apart from the example's on purpose:
+`litellmrtk-test-db`, `litellmrtk-test-router` and `litellmrtk-test-sync`. Every `docker exec`
+elsewhere in this wiki names `litellmrtk-sync`, the example stack's container; against this one,
+use `litellmrtk-test-sync`.
 
 ---
 

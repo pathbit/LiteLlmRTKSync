@@ -8,7 +8,7 @@ existe só no cadastro. Quem configurou acha que tem 600 e recebe 60.
 
 import unittest
 
-from litellm_rtksync.limits import (
+from litellm_rtksync.gateway import (
     CAMPOS_DE_TETO,
     SEVERIDADE_INCOERENTE,
     SEVERIDADE_SEM_TETO,

@@ -97,9 +97,9 @@ jobs:
         uses: softprops/action-gh-release@v2
         with:
           generate_release_notes: true
-          name: OminiRTKSync ${{ github.ref_name }}
+          name: LiteLlmRTKSync ${{ github.ref_name }}
           body: |
-            ## OminiRTKSync Docker Package
+            ## LiteLlmRTKSync Docker Package
             
             Multi-arch Docker image (linux/amd64, linux/arm64) published to GitHub Container Registry:
             ```bash

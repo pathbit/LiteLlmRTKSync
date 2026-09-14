@@ -19,7 +19,8 @@ Third of the RTKSync family, after [9RTKSync](https://github.com/pathbit/9RTKSyn
 
 The full documentation lives in the [project wiki](../../wiki): installation, the complete
 environment-variable contract, the dashboard, authentication and break-glass recovery,
-persistent logging, architecture, troubleshooting, and rate-limit coherence.
+persistent logging, architecture, troubleshooting, rate-limit coherence, and how to size a
+team against an API tier.
 
 Wiki pages are generated from [`docs/wiki/`](docs/wiki) — edit them there and open a pull
 request; a push to `master` republishes the wiki automatically.
@@ -99,7 +100,7 @@ On first boot with `DASHBOARD_PASSWORD` empty, the container generates a
 **recovery credential** and writes it inside the data directory. Read it:
 
 ```bash
-docker exec litellm-rtksync cat /app/data/.dashboard_recovery
+docker exec litellmrtk-sync cat /app/data/.dashboard_recovery
 ```
 
 Sign in as `admin` with that value, then set a real password on the screen. The
@@ -115,46 +116,46 @@ need it.
 
 ## Running with Docker
 
-### Configuração: `.env` a partir do exemplo
+### Configuration: `.env` from the example
 
-A configuração inteira vem de variáveis de ambiente, lidas de um `.env` ao lado
-do `docker-compose.yml` — o Compose o encontra sozinho, sem nenhuma flag.
+The whole configuration comes from environment variables, read from a `.env`
+next to `docker-compose.yml` — Compose finds it on its own, with no flag.
 
 ```bash
-make setup      # cria o .env a partir do .env.example, sem sobrescrever um existente
+make setup      # creates .env from .env.example, never overwriting an existing one
 ```
 
-O alvo lista, ao final, exatamente quais variáveis ficaram em branco e precisam
-ser preenchidas. Preencha e suba a stack.
+At the end, the target lists exactly which variables were left blank and need
+filling in. Fill them and bring the stack up.
 
-O `.env` **nunca** é versionado, e o `.env.example` não carrega nenhum valor de
-segredo — um valor publicado num arquivo de exemplo é, por definição, uma
-credencial pública. Um teste garante que toda variável exigida por um compose
-existe no exemplo, para que `cp .env.example .env` nunca produza um `.env`
-incompleto.
+The `.env` is **never** committed, and `.env.example` carries no secret value —
+a value published in an example file is, by definition, a public credential. A
+test guarantees that every variable a compose file requires exists in the
+example, so that `cp .env.example .env` never produces an incomplete `.env`.
 
-### Portas, e por que cada uma é diferente
+### Ports, and why each one differs
 
-Os três sincronizadores escutam na **mesma porta dentro do container** (`9090`)
-e publicam em portas diferentes no host, para que os três possam rodar lado a
-lado. O mesmo vale para os gateways: cada um tem a sua.
+The three synchronizers listen on the **same port inside the container**
+(`9090`) and publish on different host ports, so that all three can run side by
+side. The same goes for the gateways: each one has its own.
 
-| Serviço | Porta interna | Publicada no host |
+| Service | Internal port | Published on the host |
 | :--- | :--- | :--- |
 | 9Router | `20128` | `8081` |
 | OmniRoute | `20128` | `8082` |
 | LiteLLM | `4000` | `8083` |
-| 9RTKSync (painel) | `9090` | `9091` |
-| OminiRTkSync (painel) | `9090` | `9092` |
-| LiteLlmRTKSync (painel) | `9090` | `9093` |
+| 9RTKSync (dashboard) | `9090` | `9091` |
+| OminiRTkSync (dashboard) | `9090` | `9092` |
+| LiteLlmRTKSync (dashboard) | `9090` | `9093` |
 
-A stack dos artigos (`claudegravity`) fica com a **`20128`**, a porta padrão do
-9Router. As stacks dos repositórios saem dessa faixa de propósito: assim você
-roda o artigo e os três sincronizadores ao mesmo tempo, sem conflito.
+The article stack (`claudegravity`) keeps **`20128`**, the default 9Router port.
+The repository stacks deliberately move out of that range: that way you can run
+the article and all three synchronizers at the same time, with no conflict.
 
-Tudo preso a `127.0.0.1`: o gateway carrega credenciais reais e não deve ficar
-acessível na rede local. Para mudar qualquer uma, altere o lado esquerdo do
-mapeamento no compose — o lado direito é a porta interna, que o processo escuta.
+Everything is bound to `127.0.0.1`: the gateway carries real credentials and
+must not be reachable on the local network. To change any of them, edit the left
+side of the mapping in the compose file — the right side is the internal port,
+the one the process listens on.
 
 
 Official multi-architecture Docker images (`linux/amd64` and `linux/arm64`) are published automatically to the GitHub Container Registry (GHCR):
@@ -165,13 +166,41 @@ docker pull ghcr.io/pathbit/litellmrtksync:latest
 
 ### Docker Compose Example
 
-Add `litellmrtksync` to your `docker-compose.yml` alongside your LiteLLM proxy:
+Add `litellmrtk-sync` to your `docker-compose.yml` alongside your LiteLLM proxy.
+This is the same shape as [`docker-compose.example.yml`](docker-compose.example.yml)
+in the repository — service, container and hostname carry the same name, so the
+address you read in one place is the address that resolves:
 
 ```yaml
 services:
-  litellm:
+  litellmrtk-db:
+    # O LiteLLM guarda chaves virtuais, times e orcamentos em Postgres via
+    # Prisma. Sem banco o proxy sobe sem API administrativa, e e a API
+    # administrativa que este sincronizador le.
+    image: postgres:16-alpine
+    container_name: litellmrtk-db
+    hostname: litellmrtk-db
+    networks:
+      - litellmrtksync-net
+    restart: unless-stopped
+    environment:
+      - POSTGRES_USER=litellm
+      - POSTGRES_DB=litellm
+      - POSTGRES_PASSWORD=${POSTGRES_PASSWORD:?defina POSTGRES_PASSWORD no .env}
+    volumes:
+      - litellmrtksync_db:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U litellm -d litellm"]
+      interval: 10s
+      timeout: 5s
+      retries: 20
+
+  litellmrtk-router:
     image: ghcr.io/berriai/litellm:main-stable
-    container_name: litellm
+    container_name: litellmrtk-router
+    hostname: litellmrtk-router
+    networks:
+      - litellmrtksync-net
     restart: unless-stopped
     ports:
       # 4000 dentro do container; 8083 no host.
@@ -180,7 +209,17 @@ services:
       # Sem valor de fallback: um segredo publicado em arquivo de exemplo vira o
       # segredo real de toda implantacao que so copiou e colou.
       - LITELLM_MASTER_KEY=${LITELLM_MASTER_KEY:?defina LITELLM_MASTER_KEY no .env}
-      - DATABASE_URL=postgresql://litellm:${POSTGRES_PASSWORD:?defina POSTGRES_PASSWORD}@db:5432/litellm
+      - LITELLM_SALT_KEY=${LITELLM_SALT_KEY:?defina LITELLM_SALT_KEY no .env}
+      - DATABASE_URL=postgresql://litellm:${POSTGRES_PASSWORD:?defina POSTGRES_PASSWORD}@litellmrtk-db:5432/litellm
+      - STORE_MODEL_IN_DB=True
+      # Credencial da UI do LiteLLM. Sem estas duas, a tela de login aceita a
+      # MASTER_KEY como senha -- ou seja, para ver um painel o operador digita
+      # a credencial que administra a instalacao inteira.
+      - UI_USERNAME=${DASHBOARD_USER:-admin}
+      - UI_PASSWORD=${DASHBOARD_PASSWORD:?defina DASHBOARD_PASSWORD no .env}
+    depends_on:
+      litellmrtk-db:
+        condition: service_healthy
     healthcheck:
       test: ["CMD-SHELL", "python -c \"import urllib.request;urllib.request.urlopen('http://127.0.0.1:4000/health/liveliness',timeout=3)\""]
       interval: 15s
@@ -188,9 +227,12 @@ services:
       retries: 10
       start_period: 40s
 
-  litellmrtksync:
+  litellmrtk-sync:
     image: ghcr.io/pathbit/litellmrtksync:latest
-    container_name: litellmrtksync
+    container_name: litellmrtk-sync
+    hostname: litellmrtk-sync
+    networks:
+      - litellmrtksync-net
     restart: unless-stopped
     ports:
       # Porta interna 9090, igual nos tres sincronizadores; publicada em 9093.
@@ -198,7 +240,7 @@ services:
     volumes:
       - litellmrtksync_data:/app/data
     environment:
-      - LITELLM_URL=http://litellm:4000
+      - LITELLM_URL=http://litellmrtk-router:4000
       - LITELLM_MASTER_KEY=${LITELLM_MASTER_KEY:?defina LITELLM_MASTER_KEY no .env}
       - SYNC_INTERVAL=${SYNC_INTERVAL:-300}
       - REFRESH_MARGIN=${REFRESH_MARGIN:-900}
@@ -211,7 +253,7 @@ services:
       - DASHBOARD_USER=${DASHBOARD_USER:-admin}
       - DASHBOARD_PASSWORD=${DASHBOARD_PASSWORD:-}
     depends_on:
-      litellm:
+      litellmrtk-router:
         condition: service_healthy
     healthcheck:
       test: ["CMD", "/opt/venv/bin/python3", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:9090/healthz', timeout=3)"]
@@ -221,7 +263,15 @@ services:
       start_period: 10s
 
 volumes:
+  litellmrtksync_db:
   litellmrtksync_data:
+
+networks:
+  litellmrtksync-net:
+    # Rede propria da stack, com nome explicito. Na rede default, duas stacks no
+    # mesmo daemon resolvem o mesmo nome curto e nao da para saber a qual
+    # gateway o sincronizador se conectou.
+    name: litellmrtksync-net
 ```
 
 ---
@@ -275,7 +325,7 @@ litellmrtksync --daemon
 
 | Variable | Default | Description |
 | :--- | :--- | :--- |
-| `LITELLM_URL` | `http://litellm:4000` | Base URL of the LiteLLM proxy |
+| `LITELLM_URL` | `http://litellmrtk-router:4000` | Base URL of the LiteLLM proxy — the router service's name inside the stack |
 | `LITELLM_MASTER_KEY` | *(empty)* | Master key used to read administrative state. Required; a secret — set it in `.env`, never in the example |
 | `SYNC_INTERVAL` | `300` | Inspection cycle interval in seconds |
 | `REFRESH_MARGIN` | `900` | How far ahead a virtual key starts being reported as expiring |
@@ -315,7 +365,9 @@ Dashboard capabilities:
 * Rate-limit coherence report naming the field, both values and the consequence.
 * Proxy liveness card against `/health/liveliness`, with the measured latency and the proxy base URL; the panel's own `/healthz` answers `OK` or `LITELLM_UNREACHABLE`.
 * English, Portuguese and Spanish in the flag selector, stored server-side so the choice survives a browser change.
-* Manual inspection trigger (`POST /acoes/atualizar`), on-demand proxy probe (`POST /acoes/testar-gateway`) and full state as JSON (`GET /api/status`).
+* Background scheduler (`CRON_ENABLED`/`CRON_INTERVAL`) with a per-cycle log of what it found, readable from the panel itself.
+* One cycle trigger and one only (`POST /acoes/cron`), which is also what the header's primary button submits, page reload (`POST /acoes/atualizar`), on-demand proxy probe (`POST /acoes/testar-gateway`) and full state as JSON (`GET /api/status`, `GET /api/cron-status`).
+* One `(i)` button per table row, opening a modal with the full detail — virtual key limits, budget ceiling and expiry instant; a model's API base and where its credential comes from. Never the key itself.
 
 ---
 
@@ -328,10 +380,7 @@ You can run the test suite with zero installations on your host machine (Docker 
 The only requirement is Docker. Nothing else needs to be installed on your machine:
 
 ```bash
-# Via Makefile target
-make test-container
-
-# Or via Docker Compose, against a real LiteLLM + Postgres stack
+# Against a real LiteLLM + Postgres stack
 docker compose -f docker-compose.test.yml up -d
 ```
 
@@ -411,11 +460,11 @@ plataforma vem de `PLATFORM_RPM_LIMIT`, `PLATFORM_TPM_LIMIT` e
 
 **Documentação completa:** [wiki do projeto](../../wiki), gerada de
 [`docs/wiki/`](docs/wiki) — instalação, contrato de variáveis, painel,
-autenticação e recuperação, log persistente, arquitetura, diagnóstico e
-coerência de limites.
+autenticação e recuperação, log persistente, arquitetura, diagnóstico, coerência
+de limites e como dimensionar um time contra um tier de API.
 
 **Como rodar:** copie `.env.example` para `.env`, preencha a master key e os
-tetos, e suba com `docker compose -f docker-compose.test.yml up -d`. O painel
+tetos, e suba com `docker compose -f docker-compose.example.yml up -d`. O painel
 responde em `http://127.0.0.1:9093`, preso ao loopback. O primeiro acesso usa a
 credencial de recuperação, gerada no primeiro boot — o log diz em qual arquivo
 ela está, nunca o valor. Defina a sua senha pela tela: não existe senha de
