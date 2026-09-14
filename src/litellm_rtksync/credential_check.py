@@ -27,12 +27,14 @@ import time
 import urllib.error
 import urllib.parse
 import urllib.request
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from datetime import datetime, timezone
 from typing import Any, Callable, Dict, Optional
 
+from .identidade import NOME_DO_PRODUTO
+
 DEFAULT_TIMEOUT_SECONDS = 8.0
-USER_AGENT = "LiteLlmRTKSync-CredentialCheck/1.0"
+USER_AGENT = f"{NOME_DO_PRODUTO}-CredentialCheck/1.0"
 
 # States a probe can conclude. "not_checked" is the absence of a probe.
 STATE_VALID = "valid"
@@ -209,7 +211,11 @@ def check_api_key(
     # proxy tambem casa: sem esta checagem a chave do cliente sairia daqui para
     # api.openai.com ou api.anthropic.com, que nao e para onde ela deveria ir.
     if spec is not None and base_url and not _same_host(base_url, spec.url):
-        spec = ProbeSpec(base_url.rstrip("/") + "/models")
+        # So o ENDERECO muda. O jeito de autenticar continua sendo o do
+        # fornecedor: a Anthropic espera x-api-key e o Gemini x-goog-api-key, e
+        # trocar isso por um Bearer generico faria o proxy recusar uma chave
+        # perfeitamente valida.
+        spec = replace(spec, url=base_url.rstrip("/") + "/models")
 
     if spec is None:
         if not base_url:
@@ -251,6 +257,31 @@ def check_oauth_token(
     return _execute(request, timeout, opener, spec_invalid=(400,))
 
 
+
+# Prefixo com que o gateway marca uma credencial cifrada em repouso
+# (AES-256-GCM, formato enc:v1:<iv>:<cifra>:<tag>). Ler esse valor cru e
+# manda-lo ao provedor so produz uma recusa que nao diz nada sobre a
+# credencial -- diz sobre a nossa incapacidade de le-la.
+ENCRYPTED_PREFIX = "enc:"
+
+
+def looks_encrypted(value: Any) -> bool:
+    """True quando o valor guardado e um texto cifrado, nao a credencial."""
+    return isinstance(value, str) and value.startswith(ENCRYPTED_PREFIX)
+
+
+def _unreadable(campo: str) -> "CheckResult":
+    """Resultado honesto para o que nao conseguimos sequer ler."""
+    return CheckResult(
+        state=STATE_UNSUPPORTED,
+        detail=(
+            f"{campo} is encrypted at rest by the gateway; "
+            "not verifiable from here"
+        ),
+        checked_at=_now_iso(),
+    )
+
+
 def check_connection(
     conn: Any,
     timeout: float = DEFAULT_TIMEOUT_SECONDS,
@@ -266,9 +297,13 @@ def check_connection(
         )
 
     if getattr(conn, "is_oauth", False) and getattr(conn, "access_token", None):
+        if looks_encrypted(conn.access_token):
+            return _unreadable("Access token")
         return check_oauth_token(conn.access_token, timeout=timeout, opener=opener)
 
     if getattr(conn, "has_api_key", False):
+        if looks_encrypted(getattr(conn, "api_key", None)):
+            return _unreadable("API key")
         return check_api_key(
             conn.provider,
             conn.api_key or "",

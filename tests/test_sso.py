@@ -39,7 +39,7 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from litellm_rtksync import protecao, sessao, sso
 from litellm_rtksync.config import Settings
 from litellm_rtksync.render import render_dashboard, render_login_page
-from litellm_rtksync.web import LiteLlmDashboardHandler, start_web
+from litellm_rtksync.web import DashboardHandler, start_web
 
 PORTA_PAINEL = 19391
 PORTA_IDP = 19392
@@ -227,7 +227,9 @@ class CookieDeEstado(unittest.TestCase):
     def test_um_cookie_adulterado_nao_vale(self):
         valor = sessao.emitir_estado_sso("s", "n", "v")
         corpo, assinatura = valor.rsplit(".", 1)
-        forjado = sessao._SEPARADOR_DO_ESTADO.join(["outro", "n", "v", str(int(time.time()) + 60)])
+        # O separador é "|": os três valores nascem de `secrets.token_urlsafe`,
+        # que nunca o produz, então ele não aparece dentro de campo nenhum.
+        forjado = "|".join(["outro", "n", "v", str(int(time.time()) + 60)])
         adulterado = base64.urlsafe_b64encode(forjado.encode()).decode() + "." + assinatura
         self.assertIsNone(sessao.ler_estado_sso(adulterado))
 
@@ -239,14 +241,14 @@ class CookieDeEstado(unittest.TestCase):
 
     def test_o_cookie_de_estado_nao_e_strict(self):
         """Strict não é enviado na volta cross-site: o login falharia em silêncio."""
-        cabecalho = sessao.cabecalho_para_gravar_estado_sso("x")
+        cabecalho = sessao.cabecalho_para_gravar_estado("x")
         self.assertIn("SameSite=Lax", cabecalho)
         self.assertIn("HttpOnly", cabecalho)
         self.assertIn("Path=/sso/", cabecalho)
 
     def test_apagar_usa_o_mesmo_caminho_de_gravar(self):
         """Path diferente não casa, e o cookie sobreviveria ao consumo."""
-        self.assertIn("Path=/sso/", sessao.cabecalho_para_apagar_estado_sso())
+        self.assertIn("Path=/sso/", sessao.cabecalho_para_apagar_estado())
 
 
 class ProvaDeChave(unittest.TestCase):
@@ -625,8 +627,8 @@ class FluxoOIDC(unittest.TestCase):
         cls.painel.server_close()
         cls.idp.shutdown()
         cls.idp.server_close()
-        LiteLlmDashboardHandler.last_cycle = {}
-        LiteLlmDashboardHandler.cron_scheduler = None
+        DashboardHandler.last_cycle = {}
+        DashboardHandler.cron_scheduler = None
         cls.tmp.cleanup()
 
     def setUp(self):

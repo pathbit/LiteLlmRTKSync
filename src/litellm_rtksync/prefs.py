@@ -1,7 +1,7 @@
 """Preferências da interface persistidas em SQLite.
 
 Usa um banco próprio do sincronizador, nunca o SQLite do gateway: escrever
-tabelas nossas no banco do LiteLLM criaria acoplamento de schema e risco de
+tabelas nossas no banco do gateway criaria acoplamento de schema e risco de
 conflito com as migrações dele.
 
 O caminho segue o mesmo diretório das demais credenciais locais do painel, então

@@ -77,6 +77,18 @@ ARQUIVO_DO_SEGREDO = ".sso_client_secret"
 VARIAVEL_DO_SEGREDO = "OIDC_CLIENT_SECRET"
 VARIAVEL_DE_DESLIGAMENTO = "SSO_DISABLED"
 
+# Os dois tempos de espera do fluxo, nomeados.
+# Espalhados como `5.0` e `10.0` no meio das chamadas, eles são a primeira coisa
+# que alguém esquece de rever — e um pedido sem limite pendura a thread que
+# serve o painel até o provedor devolver algo.
+TIMEOUT_DESCOBERTA = 5.0
+TIMEOUT_TOKEN = 10.0
+
+# Os endereços que não põem um byte na rede.
+# Declarados como conjunto, e não embutidos na checagem, porque é esta lista que
+# define a ÚNICA exceção ao HTTPS obrigatório.
+HOSTS_DE_LOOPBACK = {"127.0.0.1", "localhost", "::1", "[::1]"}
+
 ESCOPOS_PADRAO = "openid email profile"
 
 # Caminhos das rotas. Ficam aqui para que a configuração, a tela e o servidor
@@ -330,12 +342,12 @@ def _transporte_seguro(url: str) -> bool:
     partes = urllib.parse.urlsplit(url or "")
     if partes.scheme == "https":
         return True
-    return partes.scheme == "http" and partes.hostname in ("127.0.0.1", "localhost", "::1")
+    return partes.scheme == "http" and partes.hostname in HOSTS_DE_LOOPBACK
 
 
 def _pedir(url: str, dados: Optional[bytes] = None,
            cabecalhos: Optional[Dict[str, str]] = None,
-           timeout: float = 10.0) -> dict:
+           timeout: float = TIMEOUT_TOKEN) -> dict:
     """Uma chamada HTTP que devolve JSON, ou levanta FalhaDeSSO."""
     if not _transporte_seguro(url):
         raise FalhaDeSSO(f"endereco sem TLS fora do loopback: {url}")
@@ -362,7 +374,9 @@ def descobrir(issuer: str, agora: Optional[float] = None) -> dict:
         if guardado and guardado[0] > agora:
             return guardado[1]
 
-    documento = _pedir(issuer + "/.well-known/openid-configuration", timeout=5.0)
+    documento = _pedir(
+        issuer + "/.well-known/openid-configuration", timeout=TIMEOUT_DESCOBERTA
+    )
 
     # Defesa contra mix-up: o documento tem de se declarar do MESMO issuer que
     # está configurado aqui. Sem esta conferência, um provedor hostil que

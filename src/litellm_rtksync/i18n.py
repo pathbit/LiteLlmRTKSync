@@ -1,4 +1,4 @@
-"""Internacionalização da interface do LiteLlmRTKSync.
+"""Internacionalização da interface do painel.
 
 Idioma padrão: inglês. Português e espanhol são opcionais e escolhidos pelo
 seletor de bandeiras no topo do painel. A escolha é persistida em SQLite
@@ -8,6 +8,8 @@ Chave ausente numa tradução cai para o inglês, nunca para a chave crua.
 """
 
 from typing import Dict
+
+from .identidade import NOME_DO_GATEWAY
 
 DEFAULT_LANGUAGE = "en"
 
@@ -20,7 +22,7 @@ LANGUAGES: Dict[str, tuple] = {
 
 TRANSLATIONS: Dict[str, Dict[str, str]] = {
     "en": {
-        "app.subtitle": "LiteLLM Universal Token &amp; Connection Synchronizer",
+        "app.subtitle": f"{NOME_DO_GATEWAY} Universal Token &amp; Connection Synchronizer",
         "app.gateway_unset": "gateway not configured",
         "action.refresh": "Refresh",
         "action.access": "Access",
@@ -79,7 +81,7 @@ TRANSLATIONS: Dict[str, Dict[str, str]] = {
         "cron.failed": "The cycle could not be completed: {error}",
         "connections.title": "Monitored connections",
         "connections.empty": "No connection registered on the gateway.",
-        "connections.empty_hint": "In LiteLLM a connection is the upstream endpoint behind the "
+        "connections.empty_hint": f"In {NOME_DO_GATEWAY} a connection is the upstream endpoint behind the "
                                  "registered models; none of them declares one yet.",
         "connections.lifecycle_note": "The upstream endpoint has no expiry of its own: what expires "
                                       "is the credential at the provider, outside this gateway.",
@@ -98,7 +100,7 @@ TRANSLATIONS: Dict[str, Dict[str, str]] = {
         "table.cascade": "Model cascade",
         "combos.title": "Resilience combos",
         "combos.empty": "No fallback combo registered.",
-        "combos.empty_hint": "In LiteLLM the combo is the router fallback "
+        "combos.empty_hint": f"In {NOME_DO_GATEWAY} the combo is the router fallback "
                              "(router_settings.fallbacks); none is declared.",
         "combos.kind_context_window": "context window",
         "combos.kind_content_policy": "content policy",
@@ -182,15 +184,13 @@ TRANSLATIONS: Dict[str, Dict[str, str]] = {
         # Acesso federado. O vocabulário evita "SSO" solto nos rótulos de campo:
         # quem configura um provedor pela primeira vez lê "issuer" e "client id"
         # na tela do provedor, e é esse o nome que precisa encontrar aqui.
-        "sso.title": "Single sign-on",
-        "sso.intro": "Sign in through your company identity provider. The local user and "
-                     "password never leave the screen: if the provider goes down, they are "
-                     "how you get back in.",
+        "sso.title": "Single sign-on (SSO)",
+        "sso.intro": "Optional. The local user and password form never leaves the screen, so a provider outage does not lock you out.",
         "sso.tab_oidc": "OpenID Connect",
         "sso.tab_saml": "SAML 2.0",
         "sso.provider": "Provider in use",
         "sso.provider_none": "None (local password only)",
-        "sso.base_url": "Public address of this panel",
+        "sso.base_url": "Public panel address",
         "sso.base_url_hint": "The exact origin the browser uses, with no trailing slash. It has "
                             "to be FIXED: a quick tunnel changes address on every start and "
                             "every return address registered at the provider stops matching, so "
@@ -198,13 +198,13 @@ TRANSLATIONS: Dict[str, Dict[str, str]] = {
         "sso.issuer": "Issuer",
         "sso.client_id": "Client ID",
         "sso.client_secret": "Client secret",
-        "sso.secret_stored": "A secret is stored. Leave this empty to keep it.",
+        "sso.secret_stored": "A secret is stored. Leave the field blank to keep it.",
         "sso.secret_absent": "No secret stored yet.",
-        "sso.secret_from_env": "The secret comes from the environment; change it there and restart.",
+        "sso.secret_from_env": "The secret comes from the OIDC_CLIENT_SECRET environment variable. Change it there and restart the service.",
         "sso.scopes": "Scopes",
         "sso.redirect_uri": "Return address to register at the provider",
         "sso.allowed_domains": "Allowed domains",
-        "sso.allowed_emails": "Allowed addresses",
+        "sso.allowed_emails": "Allowed e-mail addresses",
         "sso.allowlist_hint": "Comma separated, and it cannot be empty: without it every account "
                              "at the provider would get in.",
         "sso.idp_entity_id": "Identity provider entity ID",
@@ -216,7 +216,7 @@ TRANSLATIONS: Dict[str, Dict[str, str]] = {
         "sso.confirm_hint": "Saving asks for the local password again: whoever steals a session "
                            "must not be able to point the panel at a hostile provider and put "
                            "themselves on the list.",
-        "sso.save": "Save single sign-on",
+        "sso.save": "Save SSO settings",
         "sso.saved": "Single sign-on settings saved.",
         "sso.turned_off": "Single sign-on is off. The local form keeps working.",
         "sso.save_refused_password": "Wrong panel password: nothing was changed.",
@@ -227,12 +227,10 @@ TRANSLATIONS: Dict[str, Dict[str, str]] = {
         "sso.save_refused_secret": "The client secret could not be written to disk, so single "
                                   "sign-on was not turned on.",
         "sso.save_refused_saml": "SAML 2.0 is not available in this image.",
-        "sso.saml_unavailable": "SAML 2.0 is not available in this image: it needs a library that "
-                               "is not installed here. OpenID Connect needs nothing extra.",
-        "sso.disabled_by_env": "Single sign-on is switched off by the environment; remove the "
-                              "switch and restart to use it.",
+        "sso.saml_unavailable": "SAML 2.0 is not available in this image. It needs a library that signs and verifies XML, and doing it by hand would accept forged assertions in silence. The fields are here so the settings are ready when the image ships with it.",
+        "sso.disabled_by_env": "Single sign-on is switched off by the SSO_DISABLED environment variable. The settings below are kept, but no SSO route answers.",
         "sso.login_button": "Sign in with {provider}",
-        "sso.failed": "Single sign-on did not complete. Sign in with your panel password.",
+        "sso.failed": "Could not sign in through the identity provider. Try again, or use your user and password.",
         "sso.entering": "Signing in",
         "sso.entering_body": "Single sign-on accepted. Opening the panel.",
         "sso.status_on": "On · {provider}",
@@ -242,7 +240,7 @@ TRANSLATIONS: Dict[str, Dict[str, str]] = {
         "language.label": "Language",
     },
     "pt": {
-        "app.subtitle": "LiteLLM Universal Token &amp; Connection Synchronizer",
+        "app.subtitle": f"{NOME_DO_GATEWAY} Universal Token &amp; Connection Synchronizer",
         "app.gateway_unset": "gateway não configurado",
         "action.refresh": "Atualizar",
         "action.access": "Acesso",
@@ -298,7 +296,7 @@ TRANSLATIONS: Dict[str, Dict[str, str]] = {
         "cron.failed": "O ciclo não pôde ser concluído: {error}",
         "connections.title": "Conexões monitoradas",
         "connections.empty": "Nenhuma conexão registrada no gateway.",
-        "connections.empty_hint": "No LiteLLM a conexão é o destino por trás dos modelos "
+        "connections.empty_hint": f"No {NOME_DO_GATEWAY} a conexão é o destino por trás dos modelos "
                                  "cadastrados; nenhum deles declara um destino ainda.",
         "connections.lifecycle_note": "O destino não tem validade própria: o que expira é a "
                                       "credencial no provedor, fora deste gateway.",
@@ -317,7 +315,7 @@ TRANSLATIONS: Dict[str, Dict[str, str]] = {
         "table.cascade": "Cascata de modelos",
         "combos.title": "Combos de resiliência",
         "combos.empty": "Nenhum combo de fallback registrado.",
-        "combos.empty_hint": "No LiteLLM o combo é o fallback do roteador "
+        "combos.empty_hint": f"No {NOME_DO_GATEWAY} o combo é o fallback do roteador "
                              "(router_settings.fallbacks); nenhum está declarado.",
         "combos.kind_context_window": "janela de contexto",
         "combos.kind_content_policy": "política de conteúdo",
@@ -347,7 +345,7 @@ TRANSLATIONS: Dict[str, Dict[str, str]] = {
         "table.alias": "Apelido",
         "table.team": "Time",
         "table.spend": "Gasto",
-        "table.details": "Detalhe",
+        "table.details": "Detalhes",
         "table.expires_at": "Expira em",
         "table.rpm_limit": "Limite RPM",
         "table.tpm_limit": "Limite TPM",
@@ -398,14 +396,13 @@ TRANSLATIONS: Dict[str, Dict[str, str]] = {
         "auth.save_failed": "Não foi possível gravar a nova senha.",
         "auth.env_managed": "As credenciais deste painel são gerenciadas fora dele. Altere-as onde o serviço é configurado e reinicie-o.",
         "action.settings": "Configurações",
-        "sso.title": "Acesso federado",
-        "sso.intro": "Entre pelo provedor de identidade da empresa. O usuário e a senha locais "
-                     "não saem da tela: se o provedor cair, é por eles que se volta a entrar.",
+        "sso.title": "Entrada federada (SSO)",
+        "sso.intro": "Opcional. O formulário de usuário e senha nunca sai da tela, então o provedor cair não tranca ninguém do lado de fora.",
         "sso.tab_oidc": "OpenID Connect",
         "sso.tab_saml": "SAML 2.0",
         "sso.provider": "Provedor em uso",
         "sso.provider_none": "Nenhum (só a senha local)",
-        "sso.base_url": "Endereço público deste painel",
+        "sso.base_url": "Endereço público do painel",
         "sso.base_url_hint": "A origem exata que o navegador usa, sem barra no fim. Tem de ser "
                             "FIXA: um túnel rápido troca de endereço a cada subida e todo "
                             "endereço de retorno registrado no provedor deixa de bater, então o "
@@ -413,13 +410,13 @@ TRANSLATIONS: Dict[str, Dict[str, str]] = {
         "sso.issuer": "Emissor (issuer)",
         "sso.client_id": "Identificador do cliente",
         "sso.client_secret": "Segredo do cliente",
-        "sso.secret_stored": "Há um segredo guardado. Deixe em branco para mantê-lo.",
+        "sso.secret_stored": "Há um segredo guardado. Deixe o campo em branco para mantê-lo.",
         "sso.secret_absent": "Ainda não há segredo guardado.",
-        "sso.secret_from_env": "O segredo vem do ambiente; altere-o lá e reinicie.",
+        "sso.secret_from_env": "O segredo vem da variável de ambiente OIDC_CLIENT_SECRET. Altere-o lá e reinicie o serviço.",
         "sso.scopes": "Escopos",
         "sso.redirect_uri": "Endereço de retorno a registrar no provedor",
         "sso.allowed_domains": "Domínios autorizados",
-        "sso.allowed_emails": "Endereços autorizados",
+        "sso.allowed_emails": "E-mails autorizados",
         "sso.allowlist_hint": "Separados por vírgula, e a lista não pode ficar vazia: sem ela "
                              "toda conta do provedor entraria.",
         "sso.idp_entity_id": "Identificador do provedor de identidade",
@@ -430,8 +427,8 @@ TRANSLATIONS: Dict[str, Dict[str, str]] = {
         "sso.current_password": "Sua senha atual do painel",
         "sso.confirm_hint": "Salvar pede a senha local de novo: quem roubar uma sessão não pode "
                            "apontar o painel para um provedor hostil e se colocar na lista.",
-        "sso.save": "Salvar acesso federado",
-        "sso.saved": "Configuração de acesso federado salva.",
+        "sso.save": "Salvar configuração de SSO",
+        "sso.saved": "Configuração de entrada federada salva.",
         "sso.turned_off": "Acesso federado desligado. O formulário local continua funcionando.",
         "sso.save_refused_password": "Senha do painel incorreta: nada foi alterado.",
         "sso.save_refused_allowlist": "Informe ao menos um domínio ou endereço: uma lista vazia "
@@ -441,13 +438,10 @@ TRANSLATIONS: Dict[str, Dict[str, str]] = {
         "sso.save_refused_secret": "Não foi possível gravar o segredo do cliente em disco, então "
                                   "o acesso federado não foi ligado.",
         "sso.save_refused_saml": "SAML 2.0 não está disponível nesta imagem.",
-        "sso.saml_unavailable": "SAML 2.0 não está disponível nesta imagem: depende de uma "
-                               "biblioteca que não está instalada aqui. OpenID Connect não "
-                               "precisa de nada a mais.",
-        "sso.disabled_by_env": "O acesso federado está desligado pelo ambiente; remova o "
-                              "interruptor e reinicie para usá-lo.",
+        "sso.saml_unavailable": "SAML 2.0 não está disponível nesta imagem. Ele exige uma biblioteca que assina e confere XML, e fazer isso à mão aceitaria asserção forjada em silêncio. Os campos ficam aqui para que a configuração já esteja pronta quando a imagem trouxer a biblioteca.",
+        "sso.disabled_by_env": "A entrada federada está desligada pela variável de ambiente SSO_DISABLED. A configuração abaixo é mantida, mas nenhuma rota de SSO responde.",
         "sso.login_button": "Entrar com {provider}",
-        "sso.failed": "O acesso federado não foi concluído. Entre com a senha do painel.",
+        "sso.failed": "Não foi possível entrar pelo provedor de identidade. Tente de novo ou use usuário e senha.",
         "sso.entering": "Entrando",
         "sso.entering_body": "Acesso federado aceito. Abrindo o painel.",
         "sso.status_on": "Ligado · {provider}",
@@ -457,7 +451,7 @@ TRANSLATIONS: Dict[str, Dict[str, str]] = {
         "language.label": "Idioma",
     },
     "es": {
-        "app.subtitle": "LiteLLM Universal Token &amp; Connection Synchronizer",
+        "app.subtitle": f"{NOME_DO_GATEWAY} Universal Token &amp; Connection Synchronizer",
         "app.gateway_unset": "gateway no configurado",
         "action.refresh": "Actualizar",
         "action.access": "Acceso",
@@ -513,7 +507,7 @@ TRANSLATIONS: Dict[str, Dict[str, str]] = {
         "cron.failed": "No se pudo completar el ciclo: {error}",
         "connections.title": "Conexiones monitoreadas",
         "connections.empty": "No hay conexiones registradas en el gateway.",
-        "connections.empty_hint": "En LiteLLM la conexión es el destino detrás de los modelos "
+        "connections.empty_hint": f"En {NOME_DO_GATEWAY} la conexión es el destino detrás de los modelos "
                                  "registrados; ninguno declara uno todavía.",
         "connections.lifecycle_note": "El destino no tiene validez propia: lo que expira es la "
                                       "credencial en el proveedor, fuera de este gateway.",
@@ -532,7 +526,7 @@ TRANSLATIONS: Dict[str, Dict[str, str]] = {
         "table.cascade": "Cascada de modelos",
         "combos.title": "Combos de resiliencia",
         "combos.empty": "No hay combos de respaldo registrados.",
-        "combos.empty_hint": "En LiteLLM el combo es el fallback del enrutador "
+        "combos.empty_hint": f"En {NOME_DO_GATEWAY} el combo es el fallback del enrutador "
                              "(router_settings.fallbacks); no hay ninguno declarado.",
         "combos.kind_context_window": "ventana de contexto",
         "combos.kind_content_policy": "política de contenido",
@@ -562,7 +556,7 @@ TRANSLATIONS: Dict[str, Dict[str, str]] = {
         "table.alias": "Alias",
         "table.team": "Equipo",
         "table.spend": "Gasto",
-        "table.details": "Detalle",
+        "table.details": "Detalles",
         "table.expires_at": "Expira el",
         "table.rpm_limit": "Límite RPM",
         "table.tpm_limit": "Límite TPM",
@@ -613,15 +607,13 @@ TRANSLATIONS: Dict[str, Dict[str, str]] = {
         "auth.save_failed": "No se pudo guardar la nueva contraseña.",
         "auth.env_managed": "Las credenciales de este panel se gestionan fuera de él. Cámbielas donde se configura el servicio y reinícielo.",
         "action.settings": "Configuración",
-        "sso.title": "Acceso federado",
-        "sso.intro": "Entre por el proveedor de identidad de la empresa. El usuario y la "
-                     "contraseña locales no salen de la pantalla: si el proveedor se cae, es "
-                     "por ellos que se vuelve a entrar.",
+        "sso.title": "Inicio de sesión federado (SSO)",
+        "sso.intro": "Opcional. El formulario de usuario y contraseña nunca sale de la pantalla, así que una caída del proveedor no deja a nadie fuera.",
         "sso.tab_oidc": "OpenID Connect",
         "sso.tab_saml": "SAML 2.0",
         "sso.provider": "Proveedor en uso",
         "sso.provider_none": "Ninguno (solo la contraseña local)",
-        "sso.base_url": "Dirección pública de este panel",
+        "sso.base_url": "Dirección pública del panel",
         "sso.base_url_hint": "El origen exacto que usa el navegador, sin barra al final. Tiene "
                             "que ser FIJO: un túnel rápido cambia de dirección en cada arranque "
                             "y toda dirección de retorno registrada en el proveedor deja de "
@@ -630,13 +622,13 @@ TRANSLATIONS: Dict[str, Dict[str, str]] = {
         "sso.issuer": "Emisor (issuer)",
         "sso.client_id": "Identificador del cliente",
         "sso.client_secret": "Secreto del cliente",
-        "sso.secret_stored": "Hay un secreto guardado. Déjelo en blanco para mantenerlo.",
+        "sso.secret_stored": "Hay un secreto guardado. Deje el campo en blanco para conservarlo.",
         "sso.secret_absent": "Todavía no hay secreto guardado.",
-        "sso.secret_from_env": "El secreto viene del entorno; cámbielo allí y reinicie.",
+        "sso.secret_from_env": "El secreto viene de la variable de entorno OIDC_CLIENT_SECRET. Cámbielo allí y reinicie el servicio.",
         "sso.scopes": "Ámbitos",
         "sso.redirect_uri": "Dirección de retorno a registrar en el proveedor",
         "sso.allowed_domains": "Dominios autorizados",
-        "sso.allowed_emails": "Direcciones autorizadas",
+        "sso.allowed_emails": "Correos autorizados",
         "sso.allowlist_hint": "Separados por coma, y la lista no puede quedar vacía: sin ella "
                              "entraría toda cuenta del proveedor.",
         "sso.idp_entity_id": "Identificador del proveedor de identidad",
@@ -647,8 +639,8 @@ TRANSLATIONS: Dict[str, Dict[str, str]] = {
         "sso.current_password": "Su contraseña actual del panel",
         "sso.confirm_hint": "Guardar pide la contraseña local otra vez: quien robe una sesión no "
                            "puede apuntar el panel a un proveedor hostil y ponerse en la lista.",
-        "sso.save": "Guardar acceso federado",
-        "sso.saved": "Configuración de acceso federado guardada.",
+        "sso.save": "Guardar configuración de SSO",
+        "sso.saved": "Configuración de inicio de sesión federado guardada.",
         "sso.turned_off": "Acceso federado apagado. El formulario local sigue funcionando.",
         "sso.save_refused_password": "Contraseña del panel incorrecta: no se cambió nada.",
         "sso.save_refused_allowlist": "Indique al menos un dominio o dirección: una lista vacía "
@@ -658,13 +650,10 @@ TRANSLATIONS: Dict[str, Dict[str, str]] = {
         "sso.save_refused_secret": "No se pudo guardar el secreto del cliente en disco, así que "
                                   "el acceso federado no se activó.",
         "sso.save_refused_saml": "SAML 2.0 no está disponible en esta imagen.",
-        "sso.saml_unavailable": "SAML 2.0 no está disponible en esta imagen: depende de una "
-                               "biblioteca que no está instalada aquí. OpenID Connect no "
-                               "necesita nada más.",
-        "sso.disabled_by_env": "El acceso federado está apagado por el entorno; quite el "
-                              "interruptor y reinicie para usarlo.",
+        "sso.saml_unavailable": "SAML 2.0 no está disponible en esta imagen. Requiere una biblioteca que firme y verifique XML, y hacerlo a mano aceptaría aserciones falsificadas en silencio. Los campos quedan aquí para que la configuración esté lista cuando la imagen traiga la biblioteca.",
+        "sso.disabled_by_env": "El inicio de sesión federado está apagado por la variable de entorno SSO_DISABLED. La configuración de abajo se conserva, pero ninguna ruta de SSO responde.",
         "sso.login_button": "Entrar con {provider}",
-        "sso.failed": "El acceso federado no se completó. Entre con la contraseña del panel.",
+        "sso.failed": "No se pudo entrar por el proveedor de identidad. Inténtelo de nuevo o use usuario y contraseña.",
         "sso.entering": "Entrando",
         "sso.entering_body": "Acceso federado aceptado. Abriendo el panel.",
         "sso.status_on": "Activo · {provider}",

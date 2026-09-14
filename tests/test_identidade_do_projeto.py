@@ -54,15 +54,25 @@ class TestNenhumIdentificadorDeOutroProjeto(unittest.TestCase):
         self.assertEqual(LOG_FILE_NAME, "litellmrtksync.log")
 
     def test_the_fallback_directory_is_this_project_s(self):
+        """O diretório de reserva carrega o apelido DESTE produto, não o do irmão.
+
+        Confere o valor resolvido, e não o texto do módulo: desde o cânone o
+        apelido vem de `identidade.py`, então o literal já não aparece em
+        `logs.py` — e um teste que procurasse o literal passaria a reprovar
+        justamente a correção que o fez sumir.
+        """
+        import os
+
         from litellm_rtksync import logs
 
-        destino = logs._fallback_log_dir() if hasattr(logs, "_fallback_log_dir") else None
-        if destino is None:  # nome interno pode mudar; a fonte é o módulo
-            with open(logs.__file__, encoding="utf-8") as f:
-                conteudo = f.read()
-            self.assertIn(".litellmrtksync", conteudo)
-        else:
-            self.assertIn(".litellmrtksync", destino)
+        # Sem LOG_DIR e sem banco, o destino é o home do usuário.
+        anterior = os.environ.pop("LOG_DIR", None)
+        try:
+            destino = logs.resolve_log_dir()
+        finally:
+            if anterior is not None:
+                os.environ["LOG_DIR"] = anterior
+        self.assertIn(".litellmrtksync", destino)
 
 
 if __name__ == "__main__":

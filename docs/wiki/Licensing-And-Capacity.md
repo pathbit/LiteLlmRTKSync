@@ -261,7 +261,7 @@ litellmrtksync --status --url http://127.0.0.1:8083 || echo "revisar limites"
 600 against a team capped at 60 gets 60; a platform that claims 5,000 RPM against
 a Start tier gets 1,000, and in both cases the record says otherwise and nothing
 complains. The four fields compared live in `CAMPOS_DE_TETO`
-`[FONTE: src/litellm_rtksync/limits.py:18]`.
+`[FONTE: src/litellm_rtksync/gateway.py:246]`.
 
 Leaving `PLATFORM_*` empty is a **choice, not an error** — the panel reports *no
 cap declared* and goes on comparing key against team. But an empty platform level
@@ -281,7 +281,7 @@ by field, with the names as the code writes them:
 | How much has it burned? | `spend` | `models.py:76-81` | *Spend* (`i18n.py:110`) |
 | Did it hit the ceiling? | `healthStatus` = `over_budget` | `models.py:92-95` | *Budget exhausted* (`i18n.py:100`) |
 | How many keys hit it? | `summarize` | `models.py:203-210` | header counter, `/api/status` |
-| Is the declared chain coherent? | `capValue`, `capLevel`, `severity` | `limits.py:57-59` | *Limit findings* |
+| Is the declared chain coherent? | `capValue`, `capLevel`, `severity` | `gateway.py:285-287` | *Limit findings* |
 
 Four readings that are easy to get wrong:
 
@@ -301,13 +301,13 @@ value is missing data, not a promise.
 
 **`SEVERIDADE_SEM_TETO` says *this key* has nothing above it — read it precisely.**
 A key's cap level is its team when it has one, and the platform default only when
-it has none `[FONTE: src/litellm_rtksync/limits.py:133-141]`; the finding fires
+it has none `[FONTE: src/litellm_rtksync/gateway.py:361-369]`; the finding fires
 when that level declares nothing for the field
-`[FONTE: src/litellm_rtksync/limits.py:148-154]`. A key inside a capped team will
+`[FONTE: src/litellm_rtksync/gateway.py:376-382]`. A key inside a capped team will
 **not** raise it, however empty `PLATFORM_*` is. The real cost of an empty
 platform level is quieter, and it is in the second loop: a team is compared
 against the platform only when **both** values exist, otherwise the field is
-skipped `[FONTE: src/litellm_rtksync/limits.py:161-172]`. With `PLATFORM_*` unset,
+skipped `[FONTE: src/litellm_rtksync/gateway.py:390-401]`. With `PLATFORM_*` unset,
 a team declaring 5,000 RPM on a Start tier is never examined at all. Sizing a tier
 and not writing it into the environment does not merely omit a warning; it
 switches off the check that would have caught you.
@@ -315,7 +315,7 @@ switches off the check that would have caught you.
 **And the boundary: the panel shows declared ceilings and cumulative spend — it
 does not show `R_h` or `T_in`.** The client reads `/key/list`, `/team/list`,
 `/model/info`, `/health`, `/credentials` and `/health/liveliness`, and nothing
-else `[FONTE: src/litellm_rtksync/client.py:87-174]`; see
+else `[FONTE: src/litellm_rtksync/gateway.py:114-201]`; see
 [Architecture](Architecture) for why the administrative API is the only surface it
 touches. For per-hour rate and per-request tokens, query LiteLLM's own spend log
 grouped by hour — each entry already carries key, model and tokens — or run
@@ -655,7 +655,7 @@ mesmo erro que o projeto existe para pegar, um nível acima. Chave que declara 6
 sob um time de 60 recebe 60; plataforma que declara 5.000 RPM sobre um tier Start
 recebe 1.000 — e nos dois casos o cadastro diz outra coisa e nada reclama. Os
 quatro campos comparados estão em `CAMPOS_DE_TETO`
-`[FONTE: src/litellm_rtksync/limits.py:18]`.
+`[FONTE: src/litellm_rtksync/gateway.py:246]`.
 
 Deixar `PLATFORM_*` vazio é **uma escolha, não um erro**: o painel reporta *sem
 teto declarado* e segue comparando chave contra time. Mas plataforma vazia
@@ -675,7 +675,7 @@ campo, com o nome que o código escreve:
 | Quanto já queimou? | `spend` | `models.py:76-81` | *Gasto* (`i18n.py:250`) |
 | Bateu no teto? | `healthStatus` = `over_budget` | `models.py:92-95` | *Orçamento esgotado* (`i18n.py:240`) |
 | Quantas chaves bateram? | `summarize` | `models.py:203-210` | contador do cabeçalho, `/api/status` |
-| A cadeia declarada é coerente? | `capValue`, `capLevel`, `severity` | `limits.py:57-59` | *Incoerências de limite* |
+| A cadeia declarada é coerente? | `capValue`, `capLevel`, `severity` | `gateway.py:285-287` | *Incoerências de limite* |
 
 Quatro leituras fáceis de errar:
 
@@ -695,13 +695,13 @@ dado que falta, não promessa.
 **`SEVERIDADE_SEM_TETO` diz que *aquela chave* não tem nada acima dela — leia com
 precisão.** O nível de teto de uma chave é o time dela quando ela tem um, e o
 padrão da plataforma só quando ela não tem
-`[FONTE: src/litellm_rtksync/limits.py:133-141]`; o achado dispara quando esse
+`[FONTE: src/litellm_rtksync/gateway.py:361-369]`; o achado dispara quando esse
 nível não declara nada para o campo
-`[FONTE: src/litellm_rtksync/limits.py:148-154]`. Uma chave dentro de um time com
+`[FONTE: src/litellm_rtksync/gateway.py:376-382]`. Uma chave dentro de um time com
 teto **não** levanta esse achado, por mais vazio que `PLATFORM_*` esteja. O custo
 real de deixar a plataforma vazia é mais silencioso, e está no segundo laço: um
 time só é comparado com a plataforma quando **os dois** valores existem — caso
-contrário o campo é pulado `[FONTE: src/litellm_rtksync/limits.py:161-172]`. Com
+contrário o campo é pulado `[FONTE: src/litellm_rtksync/gateway.py:390-401]`. Com
 `PLATFORM_*` em branco, um time declarando 5.000 RPM sobre um tier Start nunca
 chega a ser examinado. Dimensionar um tier e não escrevê-lo no ambiente não deixa
 só de avisar: desliga a verificação que teria pegado o erro.
@@ -709,7 +709,7 @@ só de avisar: desliga a verificação que teria pegado o erro.
 **E o limite: o painel mostra teto declarado e gasto acumulado — ele não mostra
 `R_h` nem `T_in`.** O cliente lê `/key/list`, `/team/list`, `/model/info`,
 `/health`, `/credentials` e `/health/liveliness`, e nada além disso
-`[FONTE: src/litellm_rtksync/client.py:87-174]`; veja [Arquitetura](Architecture)
+`[FONTE: src/litellm_rtksync/gateway.py:114-201]`; veja [Arquitetura](Architecture)
 para o porquê de a API administrativa ser a única superfície tocada. Para ritmo
 por hora e tokens por requisição, consulte o log de gasto do próprio LiteLLM
 agrupado por hora — cada entrada já traz chave, modelo e tokens — ou rode

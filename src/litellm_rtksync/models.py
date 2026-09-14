@@ -1,4 +1,4 @@
-"""Registros do LiteLLM, já com as perguntas que o painel precisa responder."""
+"""Registros lidos do gateway, já com as perguntas que o painel responde."""
 
 from dataclasses import dataclass
 from datetime import datetime, timezone
@@ -39,8 +39,8 @@ def parse_instante(valor: Any) -> Optional[datetime]:
 
 
 @dataclass
-class VirtualKey:
-    """Uma chave virtual do LiteLLM (`LiteLLM_VerificationToken`)."""
+class VirtualKeyRecord:
+    """Uma chave virtual emitida pelo gateway."""
 
     raw: Dict[str, Any]
 
@@ -142,8 +142,8 @@ class VirtualKey:
 
 
 @dataclass
-class ModelEntry:
-    """Um modelo cadastrado no proxy (`LiteLLM_ProxyModelTable`)."""
+class RegisteredModelRecord:
+    """Um modelo cadastrado no proxy."""
 
     raw: Dict[str, Any]
 
@@ -162,7 +162,7 @@ class ModelEntry:
 
         É a única coisa que amarra este cadastro ao veredito do `/health`: lá o
         modelo é identificado por `model_id`, e não por `model_name` — dois
-        deployments podem compartilhar o mesmo nome de modelo, e o LiteLLM trata
+        deployments podem compartilhar o mesmo nome de modelo, e o gateway trata
         isso como recurso, não como erro.
         """
         info = self.raw.get("model_info")
@@ -211,12 +211,12 @@ class ModelEntry:
 
 
 @dataclass
-class UpstreamConnection:
+class ConnectionRecord:
     """Um destino real atrás dos modelos cadastrados.
 
     Os painéis irmãos listam "conexões monitoradas": as identidades que o
-    gateway usa para falar com o provedor. O LiteLLM não guarda essa lista em
-    lugar nenhum — ele guarda MODELOS, e cada modelo declara para onde vai
+    gateway usa para falar com o provedor. Este gateway não guarda essa lista
+    em lugar nenhum — ele guarda MODELOS, e cada modelo declara para onde vai
     (`api_base`) e com que credencial (`litellm_credential_name`, `api_key`).
 
     A conexão, aqui, é o que sobra quando se agrupa os modelos por destino:
@@ -226,7 +226,7 @@ class UpstreamConnection:
     mesma coisa — uma linha, sempre saudável — e não ajuda ninguém a descobrir
     qual provedor parou de responder.
 
-    Pares de rota do LiteLLM que sustentam isso: `/model/info` devolve
+    Pares de rota do gateway que sustentam isso: `/model/info` devolve
     `litellm_params` com `api_base` e `litellm_credential_name`; `/credentials`
     lista as credenciais nomeadas com o valor já mascarado pelo gateway. Nada
     aqui carrega segredo: só o NOME da credencial e o endereço do destino.
@@ -235,7 +235,7 @@ class UpstreamConnection:
     provider: str
     api_base: Optional[str]
     credential_name: Optional[str]
-    models: List[ModelEntry]
+    models: List[RegisteredModelRecord]
 
     @property
     def identity(self) -> str:
@@ -270,18 +270,18 @@ class UpstreamConnection:
         }
 
 
-def group_connections(models: List[ModelEntry]) -> List[UpstreamConnection]:
+def group_connections(models: List[RegisteredModelRecord]) -> List[ConnectionRecord]:
     """Agrupa os modelos cadastrados nos destinos que eles realmente usam.
 
     A ordem de saída é a da primeira aparição de cada destino, para que a tabela
     não mude de ordem entre dois carregamentos sem nada ter mudado no gateway.
     """
-    agrupadas: Dict[str, UpstreamConnection] = {}
+    agrupadas: Dict[str, ConnectionRecord] = {}
     for modelo in models:
         chave = f"{modelo.provider}|{modelo.api_base or ''}"
         conexao = agrupadas.get(chave)
         if conexao is None:
-            conexao = UpstreamConnection(
+            conexao = ConnectionRecord(
                 provider=modelo.provider,
                 api_base=modelo.api_base,
                 credential_name=(str(modelo.params.get("litellm_credential_name"))
@@ -298,56 +298,7 @@ def group_connections(models: List[ModelEntry]) -> List[UpstreamConnection]:
     return list(agrupadas.values())
 
 
-# Os três tipos de fallback do roteador do LiteLLM, na ordem em que a tela os
-# mostra. O valor é a CHAVE de tradução do rótulo; `general` não tem rótulo
-# porque é o caso comum e nomear o óbvio só ocupa a linha.
-TIPOS_DE_FALLBACK = (
-    ("fallbacks", "general", ""),
-    ("context_window_fallbacks", "context_window", "combos.kind_context_window"),
-    ("content_policy_fallbacks", "content_policy", "combos.kind_content_policy"),
-)
-
-
-def fallback_combos(router_settings: Dict[str, Any]) -> List[Dict[str, Any]]:
-    """Combos de resiliência do LiteLLM, que aqui se chamam FALLBACKS.
-
-    O conceito existe e é exatamente o mesmo dos irmãos: um modelo principal e
-    a cascata que assume quando ele falha. O que muda é o nome e o lugar — no
-    LiteLLM isso mora em `router_settings`, e chega por `GET /router/settings`
-    na forma `[{"modelo-principal": ["reserva-1", "reserva-2"]}]`.
-
-    São três listas distintas, e juntá-las numa só sem dizer qual é qual seria
-    mentira: `context_window_fallbacks` só dispara quando a janela estoura e
-    `content_policy_fallbacks` só quando a política recusa. O tipo viaja no
-    registro para a tela poder marcá-lo.
-    """
-    combos: List[Dict[str, Any]] = []
-    if not isinstance(router_settings, dict):
-        return combos
-    for campo, tipo, rotulo in TIPOS_DE_FALLBACK:
-        entradas = router_settings.get(campo)
-        if isinstance(entradas, dict):
-            entradas = [entradas]
-        if not isinstance(entradas, list):
-            continue
-        for entrada in entradas:
-            if not isinstance(entrada, dict):
-                continue
-            for principal, reservas in entrada.items():
-                if isinstance(reservas, str):
-                    reservas = [reservas]
-                if not isinstance(reservas, list):
-                    continue
-                combos.append({
-                    "name": str(principal),
-                    "models": [str(m) for m in reservas],
-                    "kind": tipo,
-                    "kindLabelKey": rotulo,
-                })
-    return combos
-
-
-def summarize(keys: List[VirtualKey], margin_seconds: int = 900) -> Dict[str, int]:
+def summarize(keys: List[VirtualKeyRecord], margin_seconds: int = 900) -> Dict[str, int]:
     """Contagem por estado, para o cabeçalho do painel."""
     resumo = {
         SAUDE_ATIVA: 0,

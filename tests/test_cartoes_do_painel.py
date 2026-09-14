@@ -18,7 +18,8 @@ também: a tentação, ao portar, é esconder o que não tem dado.
 import unittest
 
 from litellm_rtksync.i18n import LANGUAGES, translate
-from litellm_rtksync.models import ModelEntry, fallback_combos, group_connections
+from litellm_rtksync.gateway import fallback_combos
+from litellm_rtksync.models import RegisteredModelRecord, group_connections
 from litellm_rtksync.render import render_combos_table, render_connections_table, render_dashboard
 
 # A ordem acordada para os três painéis. A chave é o título traduzido de cada
@@ -97,15 +98,15 @@ class ConexoesMonitoradas(unittest.TestCase):
 
     def modelos(self):
         return [
-            ModelEntry({"model_name": "gateway-a-gemini", "litellm_params": {
+            RegisteredModelRecord({"model_name": "gateway-a-gemini", "litellm_params": {
                 "model": "openai/gemini/gemini-3.8-flash",
                 "api_base": "http://um-gateway:20128/v1",
                 "litellm_credential_name": "cred-um"}}),
-            ModelEntry({"model_name": "gateway-a-gpt", "litellm_params": {
+            RegisteredModelRecord({"model_name": "gateway-a-gpt", "litellm_params": {
                 "model": "openai/gpt-4o",
                 "api_base": "http://um-gateway:20128/v1",
                 "litellm_credential_name": "cred-um"}}),
-            ModelEntry({"model_name": "gateway-b-granite", "litellm_params": {
+            RegisteredModelRecord({"model_name": "gateway-b-granite", "litellm_params": {
                 "model": "openai/openrouter/granite",
                 "api_base": "http://outro-gateway:20128/v1",
                 "litellm_credential_name": "cred-dois"}}),
@@ -128,7 +129,7 @@ class ConexoesMonitoradas(unittest.TestCase):
 
     def test_nenhuma_chave_de_api_chega_a_tela(self):
         segredo = "sk-SEGREDO-DE-DESTINO-QUE-NAO-PODE-VAZAR"
-        modelos = [ModelEntry({"model_name": "m", "litellm_params": {
+        modelos = [RegisteredModelRecord({"model_name": "m", "litellm_params": {
             "model": "openai/gpt-4o", "api_base": "http://d/v1", "api_key": segredo}})]
         html = render_connections_table(group_connections(modelos), {}, "pt")
         self.assertNotIn(segredo, html)

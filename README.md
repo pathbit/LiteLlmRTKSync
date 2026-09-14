@@ -142,9 +142,10 @@ lado. O mesmo vale para os gateways: cada um tem a sua.
 
 | Serviço | Porta interna | Publicada no host |
 | :--- | :--- | :--- |
-| 9Router | `20128` | `8081` |
+| 9Router (stack do 9RTKSync) | `20128` | `8081` |
 | OmniRoute | `20128` | `8082` |
 | LiteLLM | `4000` | `8083` |
+| 9Router (`litellmrtk-9router`, desta stack) | `20128` | `8383` |
 | 9RTKSync (painel) | `9090` | `9091` |
 | OminiRTkSync (painel) | `9090` | `9092` |
 | LiteLlmRTKSync (painel) | `9090` | `9093` |

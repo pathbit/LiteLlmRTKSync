@@ -7,7 +7,7 @@ gravados também em arquivo, com rotação diária e retenção configurável.
 
 Variáveis de ambiente:
     LOG_DIR             Diretório dos arquivos de log. Padrão: <dir do DB>/logs,
-                        com fallback para ~/.litellmrtksync/logs.
+                        com fallback para ~/.<apelido do produto>/logs.
     LOG_RETENTION_DAYS  Dias de retenção antes do expurgo. Padrão: 30.
     LOG_LEVEL           Nível mínimo registrado (DEBUG/INFO/WARNING/ERROR). Padrão: INFO.
     LOG_TO_STDOUT       Espelha no stdout (1=sim, 0=não). Padrão: 1.
@@ -21,7 +21,14 @@ import time
 from logging.handlers import TimedRotatingFileHandler
 from typing import Optional
 
-LOG_FILE_NAME = "litellmrtksync.log"
+from .identidade import NOME_DO_PRODUTO
+
+# Apelido do produto em minúsculas: é o nome do arquivo, do logger e do
+# diretório de fallback. Vem da identidade para que os irmãos, rodando na
+# mesma máquina, nunca escrevam no mesmo arquivo.
+APELIDO = NOME_DO_PRODUTO.lower()
+
+LOG_FILE_NAME = f"{APELIDO}.log"
 DEFAULT_RETENTION_DAYS = 30
 
 _logger: Optional[logging.Logger] = None
@@ -48,7 +55,7 @@ def resolve_log_dir(db_path: str = "") -> str:
         if parent and os.path.isdir(parent) and os.access(parent, os.W_OK):
             return candidate
 
-    return os.path.join(os.path.expanduser("~"), ".litellmrtksync", "logs")
+    return os.path.join(os.path.expanduser("~"), f".{APELIDO}", "logs")
 
 
 def purge_expired_logs(log_dir: str, retention_days: Optional[int] = None) -> int:
@@ -82,7 +89,7 @@ def setup_logging(db_path: str = "") -> logging.Logger:
         if _logger is not None:
             return _logger
 
-        logger = logging.getLogger("litellmrtksync")
+        logger = logging.getLogger(APELIDO)
         logger.setLevel(getattr(logging, os.environ.get("LOG_LEVEL", "INFO").upper(), logging.INFO))
         logger.propagate = False
         logger.handlers.clear()

@@ -10,12 +10,18 @@ por isso funciona também na página de erro, que é servida antes de qualquer
 autenticação.
 """
 
+import importlib
 import pathlib
 import re
 import unittest
 
 RAIZ = pathlib.Path(__file__).resolve().parent.parent
-RENDER = RAIZ / "src" / "litellm_rtksync" / "render.py"
+# O pacote é o único diretório sob src/ que declara identidade: descobri-lo
+# em vez de escrever o nome mantém este teste igual nos três repositórios.
+PACOTE = next(
+    p for p in sorted((RAIZ / "src").iterdir()) if (p / "identidade.py").is_file()
+)
+RENDER = PACOTE / "render.py"
 
 
 class TodaPaginaTemIcone(unittest.TestCase):
@@ -23,11 +29,16 @@ class TodaPaginaTemIcone(unittest.TestCase):
         self.fonte = RENDER.read_text(encoding="utf-8")
 
     def test_o_icone_e_uma_constante_unica(self):
-        """Duplicar o SVG em cada página é como as duas cópias divergem."""
+        """Duplicar o SVG em cada página é como as duas cópias divergem.
+
+        A moldura (viewBox, rect, transform) é comum aos três painéis e mora
+        aqui; o desenho e a cor vêm de identidade.py. Por isso a constante é
+        montada por concatenação, e não escrita de uma vez.
+        """
         # re.M porque assertRegex usa re.search sem flags, e `^` sozinho só
         # casaria no primeiro caractere do arquivo.
         self.assertIsNotNone(
-            re.search(r'^FAVICON = "data:image/svg\+xml,', self.fonte, re.M),
+            re.search(r'^FAVICON = \(\n\s+"data:image/svg\+xml,', self.fonte, re.M),
             "o ícone tem de ser uma constante no topo do módulo",
         )
 
@@ -44,10 +55,9 @@ class TodaPaginaTemIcone(unittest.TestCase):
 
     def test_o_icone_nao_depende_de_requisicao(self):
         """Um href para arquivo seria buscado, e /favicon.ico responde 401."""
-        achado = re.search(r'^FAVICON = "([^"]+)"', self.fonte, re.M)
-        self.assertIsNotNone(achado)
+        modulo = importlib.import_module(f"{PACOTE.name}.render")
         self.assertTrue(
-            achado.group(1).startswith("data:"),
+            modulo.FAVICON.startswith("data:"),
             "o ícone precisa ser data URI: qualquer URL seria buscada e levaria 401",
         )
 

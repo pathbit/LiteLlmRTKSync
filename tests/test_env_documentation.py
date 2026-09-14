@@ -39,10 +39,15 @@ DO_GATEWAY = {
 }
 
 # Lidas pelo COMPOSE, não pelo código Python: alimentam os serviços opcionais de
-# acesso remoto (perfis `tunel` e `tailnet`). Precisam estar anunciadas no
-# exemplo -- é lá que o operador descobre que existem -- mas nenhum os.environ
-# daqui as procura, e é isso que a varredura acima mede.
-DO_COMPOSE = {"TUNNEL_TOKEN", "TS_AUTHKEY"}
+# acesso remoto (perfis `tunel` e `tailnet`) e o 9Router desta stack
+# (`litellmrtk-9router`, o gateway para onde o proxy encadeia). Precisam estar
+# anunciadas no exemplo -- é lá que o operador descobre que existem -- mas
+# nenhum os.environ daqui as procura, e é isso que a varredura acima mede.
+#
+# INITIAL_PASSWORD e JWT_SECRET são obrigatórias no compose (`:?`): sem elas a
+# stack recusa subir. Continuam fora do código Python porque quem as consome é
+# o container do gateway, não o sincronizador.
+DO_COMPOSE = {"TUNNEL_TOKEN", "TS_AUTHKEY", "INITIAL_PASSWORD", "JWT_SECRET"}
 
 # Credenciais que este proxy APRESENTA aos gateways irmaos (9Router e
 # OmniRoute) quando usa um deles como provedor. Mesma categoria das chaves de

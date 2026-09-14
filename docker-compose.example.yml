@@ -1,8 +1,18 @@
 name: litellmrtksync-stack
 
-# Stack de exemplo: o proxy LiteLLM, o Postgres que ele exige e o
-# sincronizador. Mesma forma dos irmaos 9RTKSync e OminiRTkSync -- gateway,
-# banco do gateway e o sincronizador ao lado, com o painel preso ao loopback.
+# Stack de exemplo: o proxy LiteLLM, o Postgres que ele exige, o 9Router para
+# onde o proxy encadeia e o sincronizador. Mesma forma dos irmaos 9RTKSync e
+# OminiRTkSync -- gateway, banco do gateway e o sincronizador ao lado, com o
+# painel preso ao loopback.
+#
+# POR QUE ESTA STACK TEM O PROPRIO 9ROUTER
+#
+# Antes, o encadeamento do LiteLLM apontava para o `9rtk-router`, que pertence
+# a stack do 9RTKSync, pela rede de inferencia compartilhada. Funcionava e era
+# fragil: subir esta stack sozinha dava um proxy sem para onde encadear, e
+# derrubar a stack do vizinho quebrava a inferencia daqui sem que nada neste
+# arquivo tivesse mudado. Com o `litellmrtk-9router` aqui dentro, a stack sobe
+# inteira e funciona sozinha -- e o vizinho volta a ser opcional.
 #
 #   make setup    # cria o .env a partir do .env.example
 #   # preencha o .env
@@ -33,23 +43,85 @@ services:
       timeout: 5s
       retries: 20
 
+  litellmrtk-9router:
+    # O gateway DESTA stack -- o mesmo programa que roda no 9RTKSync, mas uma
+    # instancia propria, com banco proprio, chave propria e ciclo de vida
+    # amarrado a este compose. E ele que o `litellmrtk-router` usa como provedor
+    # encadeado; o `9rtk-router` do vizinho deixou de fazer parte do caminho.
+    #
+    # Nome no padrao da stack (`litellmrtk-<papel>`), com servico =
+    # container_name = hostname, como nos demais: e por esse nome que o proxy o
+    # alcanca na rede interna, e e esse nome que aparece no `docker logs`.
+    image: decolua/9router:latest
+    container_name: litellmrtk-9router
+    hostname: litellmrtk-9router
+    networks:
+      # SO a rede de gestao desta stack. Nao entra na `rtk-inference-net` de
+      # proposito: a rede compartilhada existe para alcancar gateway de OUTRA
+      # stack, e este aqui e de casa. Mante-lo fora e o que torna o
+      # encadeamento independente de a rede externa existir e de o vizinho
+      # estar no ar.
+      - litellmrtksync-net
+    restart: unless-stopped
+    ports:
+      # Porta interna 20128 (padrao do 9Router); publicada em 8383 no host.
+      # Nao colide com nenhuma das que ja estao em uso -- 8081 do 9Router do
+      # 9RTKSync, 8082 do OmniRoute, 8083 deste proxy, 20128 da stack do artigo.
+      - "127.0.0.1:8383:20128"
+    environment:
+      - DATA_DIR=/app/data
+      - PORT=20128
+      - HOSTNAME=0.0.0.0
+      - NEXT_PUBLIC_BASE_URL=http://localhost:8383
+      - NODE_ENV=production
+      # Sem valor de fallback, pelo mesmo motivo da senha do Postgres acima: um
+      # default publicado em arquivo de exemplo vira a senha real de toda
+      # implantacao que so copiou e colou. O compose recusa subir enquanto as
+      # duas nao estiverem no .env, e a recusa nomeia a variavel, nunca o valor.
+      - INITIAL_PASSWORD=${INITIAL_PASSWORD:?defina INITIAL_PASSWORD no .env}
+      - JWT_SECRET=${JWT_SECRET:?defina JWT_SECRET no .env (openssl rand -hex 32)}
+      # Atencao: `false` NAO quer dizer "nao precisa de chave". O 9Router
+      # autoriza por peer -- o loopback e confiado, um vizinho de rede Docker
+      # nao e -- entao o proxy continua tendo de apresentar a chave emitida
+      # neste painel. Veja docs/wiki/Chaining-Gateways.md, secao 5.3.
+      - REQUIRE_API_KEY=false
+      # REQUIRE_LOGIN=false so e aceitavel porque a porta acima esta presa em
+      # 127.0.0.1. Ao expor a 20128 na rede, mude para true.
+      - REQUIRE_LOGIN=false
+    volumes:
+      # Volume proprio: contas, chaves e configuracao deste gateway nao se
+      # misturam com as do 9Router do vizinho, que vive noutro volume.
+      - litellmrtksync_9router:/app/data
+    healthcheck:
+      # `/api/health` devolve 200 com {"ok":true}. Nao use `/dashboard`: ele
+      # responde 307 (redireciona para o login) e um teste que aceita 307 passa
+      # a aceitar tambem um gateway que so sabe redirecionar.
+      test: ["CMD-SHELL", "node -e \"require('http').get('http://127.0.0.1:20128/api/health',r=>process.exit(r.statusCode===200?0:1)).on('error',()=>process.exit(1))\""]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+      start_period: 20s
+
   litellmrtk-router:
     image: ghcr.io/berriai/litellm:main-stable
     container_name: litellmrtk-router
     hostname: litellmrtk-router
     networks:
       # Duas redes de proposito (ver o bloco `networks:` no fim do arquivo):
-      # a propria, de gestao, onde ficam o Postgres e o sincronizador desta
-      # stack; e a de inferencia, a unica onde este proxy alcanca os gateways
-      # irmaos pelos nomes `9rtk-router` e `ominirtk-router`.
+      # a propria, de gestao, onde ficam o Postgres, o 9Router desta stack e o
+      # sincronizador -- e e por ela que o encadeamento acontece hoje, pelo
+      # nome `litellmrtk-9router`; e a de inferencia, que continua existindo
+      # so para alcancar gateway de OUTRA stack (`ominirtk-router`) e agora e
+      # opcional para o caminho principal.
       - litellmrtksync-net
       - rtk-inference-net
     restart: unless-stopped
     ports:
       # Porta interna 4000 (padrao do LiteLLM); publicada em 8083 no host.
-      # Cada gateway tem a sua porta no host -- 8081 9Router, 8082 OmniRoute,
-      # 8083 LiteLLM -- para que os tres rodem juntos, inclusive ao lado da
-      # stack do artigo, que fica com a 20128.
+      # Cada gateway tem a sua porta no host -- 8081 9Router do 9RTKSync,
+      # 8082 OmniRoute, 8083 este proxy, 8383 o 9Router desta stack -- para que
+      # todos rodem juntos, inclusive ao lado da stack do artigo, que fica com
+      # a 20128.
       - "127.0.0.1:8083:4000"
     environment:
       - DATABASE_URL=postgresql://litellm:${POSTGRES_PASSWORD:?defina POSTGRES_PASSWORD no .env}@litellmrtk-db:5432/litellm
@@ -202,6 +274,11 @@ volumes:
   litellmrtk_tailnet:
   litellmrtksync_db:
   litellmrtksync_data:
+  # Contas, chaves e configuracao do 9Router desta stack. Apagar este volume
+  # (`docker compose down -v`) apaga a chave que o `.env` guarda em
+  # NINEROUTER_API_KEY -- o arquivo continua com o valor antigo e a inferencia
+  # passa a responder 401. Veja docs/wiki/Chaining-Gateways.md, secao 5.4.
+  litellmrtksync_9router:
 
 networks:
   litellmrtksync-net:
@@ -212,23 +289,31 @@ networks:
 
   # POR QUE SAO DUAS REDES
   #
-  # A de cima e de GESTAO e continua isolada: o Postgres e o sincronizador
-  # desta stack so falam com este proxy. E isso que garante que o painel do
-  # LiteLlmRTKSync nunca leia, sem querer, o gateway de um irmao -- antes, com
-  # todos na rede default, o mesmo nome curto resolvia para stacks diferentes
-  # e ninguem sabia a qual gateway o painel estava conectado. Nao desfaca.
+  # A de cima e de GESTAO e e a rede de casa: Postgres, 9Router desta stack,
+  # proxy e sincronizador. Ela continua isolada das outras stacks -- e isso que
+  # garante que o painel do LiteLlmRTKSync nunca leia, sem querer, o gateway de
+  # um irmao; antes, com todos na rede default, o mesmo nome curto resolvia
+  # para stacks diferentes e ninguem sabia a qual gateway o painel estava
+  # conectado. Nao desfaca.
   #
-  # Esta e de INFERENCIA e e compartilhada de proposito. E ela que responde ao
-  # sintoma "nao consigo conectar o LiteLLM com o 9Router ou o OmniRoute": sem
-  # ela, `getent hosts 9rtk-router` de dentro deste container nao resolve nada,
-  # porque cada stack vive so na sua rede. Com ela, um deployment pode apontar
-  # para http://9rtk-router:20128/v1 ou http://ominirtk-router:20128/v1.
-  # Atencao: 127.0.0.1:8081 NAO serve de api_base -- dentro deste container o
+  # E e por ELA que o encadeamento principal passa hoje: o proxy alcanca
+  # http://litellmrtk-9router:20128/v1 sem sair de casa. Foi a mudanca que
+  # tornou esta stack autossuficiente -- antes o caminho dependia da rede
+  # abaixo e de um container de outra stack estar no ar.
+  #
+  # A de baixo e de INFERENCIA e e compartilhada de proposito. Ela responde ao
+  # sintoma "nao consigo conectar o LiteLLM com um gateway de OUTRA stack":
+  # sem ela, `getent hosts ominirtk-router` de dentro deste container nao
+  # resolve nada, porque cada stack vive so na sua rede. Com ela, um deployment
+  # pode apontar para http://ominirtk-router:20128/v1 ou http://9rtk-router:20128/v1.
+  # Atencao: 127.0.0.1:8082 NAO serve de api_base -- dentro deste container o
   # loopback e o proprio LiteLLM. Tem de ser o nome do servico.
   #
   # So os gateways e este proxy entram nela; os sincronizadores NAO -- eles nao
   # tem o que fazer no caminho de inferencia, e mante-los de fora preserva o
-  # isolamento de gestao.
+  # isolamento de gestao. O `litellmrtk-9router` tambem fica de fora: ele e de
+  # casa, e por a-lo numa rede compartilhada so o exporia as outras stacks sem
+  # dar nada em troca.
   #
   # `external: true` porque a rede e compartilhada pelas tres stacks: ela nao
   # pertence a nenhuma, nasce e morre fora do ciclo de vida de qualquer uma:

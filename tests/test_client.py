@@ -11,7 +11,7 @@ import json
 import unittest
 import urllib.error
 
-from litellm_rtksync.client import LiteLLMClient, LiteLLMError
+from litellm_rtksync.gateway import GatewayClient, GatewayError
 
 
 class RespostaFalsa(io.BytesIO):
@@ -54,18 +54,18 @@ class TestPaginacao(unittest.TestCase):
             numero = int(request.full_url.split("page=")[1].split("&")[0])
             return RespostaFalsa(json.dumps(paginas[numero]).encode())
 
-        cliente = LiteLLMClient("http://proxy:4000", "mk", opener=abrir)
+        cliente = GatewayClient("http://proxy:4000", "mk", opener=abrir)
         chaves = cliente.list_keys()
         self.assertEqual([k["key_alias"] for k in chaves], ["a", "b", "c"])
 
     def test_an_empty_page_ends_the_walk(self):
-        cliente = LiteLLMClient("http://proxy:4000", "mk",
+        cliente = GatewayClient("http://proxy:4000", "mk",
                                 opener=opener_de({"/key/list": {"keys": [], "total_pages": 9}}))
         self.assertEqual(cliente.list_keys(), [])
 
     def test_string_entries_are_dropped_instead_of_crashing(self):
         """Sem return_full_object a API devolve strings; nao sao chaves utilizaveis."""
-        cliente = LiteLLMClient(
+        cliente = GatewayClient(
             "http://proxy:4000", "mk",
             opener=opener_de({"/key/list": {"keys": ["sk-abc", {"key_alias": "a"}], "total_pages": 1}}),
         )
@@ -74,8 +74,8 @@ class TestPaginacao(unittest.TestCase):
 
 class TestErros(unittest.TestCase):
     def test_a_rejected_master_key_says_so(self):
-        cliente = LiteLLMClient("http://proxy:4000", "errada", opener=opener_de({"/key/list": 401}))
-        with self.assertRaises(LiteLLMError) as ctx:
+        cliente = GatewayClient("http://proxy:4000", "errada", opener=opener_de({"/key/list": 401}))
+        with self.assertRaises(GatewayError) as ctx:
             cliente.list_keys()
         self.assertIn("master key", str(ctx.exception))
         self.assertEqual(ctx.exception.status, 401)
@@ -84,8 +84,8 @@ class TestErros(unittest.TestCase):
         def abrir(request, timeout=None):
             raise urllib.error.URLError("conexao recusada")
 
-        cliente = LiteLLMClient("http://proxy:4000", "mk", opener=abrir)
-        with self.assertRaises(LiteLLMError) as ctx:
+        cliente = GatewayClient("http://proxy:4000", "mk", opener=abrir)
+        with self.assertRaises(GatewayError) as ctx:
             cliente.list_keys()
         self.assertIn("inacessível", str(ctx.exception))
 
@@ -93,19 +93,19 @@ class TestErros(unittest.TestCase):
         def abrir(request, timeout=None):
             raise urllib.error.URLError("fora do ar")
 
-        self.assertFalse(LiteLLMClient("http://proxy:4000", opener=abrir).health())
+        self.assertFalse(GatewayClient("http://proxy:4000", opener=abrir).health())
 
     def test_an_older_version_without_the_credentials_route_returns_empty(self):
         """404 em /credentials significa versao anterior a tabela, nao falha."""
-        cliente = LiteLLMClient("http://proxy:4000", "mk", opener=opener_de({"/credentials": 404}))
+        cliente = GatewayClient("http://proxy:4000", "mk", opener=opener_de({"/credentials": 404}))
         self.assertEqual(cliente.list_credentials(), [])
 
     def test_a_non_json_body_is_reported_clearly(self):
         def abrir(request, timeout=None):
             return RespostaFalsa(b"<html>gateway timeout</html>")
 
-        cliente = LiteLLMClient("http://proxy:4000", "mk", opener=abrir)
-        with self.assertRaises(LiteLLMError) as ctx:
+        cliente = GatewayClient("http://proxy:4000", "mk", opener=abrir)
+        with self.assertRaises(GatewayError) as ctx:
             cliente.list_teams()
         self.assertIn("não é JSON", str(ctx.exception))
 
@@ -113,7 +113,7 @@ class TestErros(unittest.TestCase):
 class TestContrato(unittest.TestCase):
     def test_the_master_key_travels_as_a_bearer_header_never_in_the_url(self):
         registro = []
-        cliente = LiteLLMClient("http://proxy:4000", "sk-master-secreta",
+        cliente = GatewayClient("http://proxy:4000", "sk-master-secreta",
                                 opener=opener_de({"/team/list": []}, registro))
         cliente.list_teams()
         url, cabecalhos = registro[0]
@@ -122,7 +122,7 @@ class TestContrato(unittest.TestCase):
 
     def test_a_trailing_slash_in_the_base_url_does_not_double_up(self):
         registro = []
-        cliente = LiteLLMClient("http://proxy:4000/", "mk",
+        cliente = GatewayClient("http://proxy:4000/", "mk",
                                 opener=opener_de({"/team/list": []}, registro))
         cliente.list_teams()
         self.assertNotIn("//team", registro[0][0].replace("http://", ""))
@@ -135,7 +135,7 @@ class TestContrato(unittest.TestCase):
             metodos.append(request.get_method())
             return RespostaFalsa(b"{}")
 
-        cliente = LiteLLMClient("http://proxy:4000", "mk", opener=abrir)
+        cliente = GatewayClient("http://proxy:4000", "mk", opener=abrir)
         cliente.health()
         cliente.list_teams()
         cliente.list_models()

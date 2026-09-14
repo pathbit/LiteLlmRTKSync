@@ -1,4 +1,4 @@
-"""Renderização server-side do dashboard do LiteLlmRTKSync.
+"""Renderização server-side do dashboard deste sincronizador.
 
 Todo o HTML é montado aqui, no servidor, com os dados já embutidos. O navegador
 nunca consulta o proxy: ele recebe a página pronta. Isso mantém a master key
@@ -25,11 +25,23 @@ from datetime import datetime, timezone
 from typing import Any, Dict, List, Optional
 
 from .i18n import DEFAULT_LANGUAGE, LANGUAGES, normalize_language, translate
+from .identidade import (
+    COR_DO_FAVICON,
+    GLIFO_DO_FAVICON,
+    ICONE_DO_PRODUTO,
+    NOME_DO_PRODUTO,
+    PALETA,
+)
 
 # Icone da aba, embutido como data URI: /favicon.ico responde 401 atras do
 # Basic Auth, entao um arquivo servido deixaria a aba sem icone ate o
 # operador autenticar -- e a pagina de erro nunca teria icone nenhum.
-FAVICON = "data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'><rect width='32' height='32' rx='7' fill='%237d1414'/><g transform='translate(6 6) scale(1.25)' fill='%23ffffff'><path d='M8 4a.5.5 0 0 1 .5.5V6a.5.5 0 0 1-1 0V4.5A.5.5 0 0 1 8 4M3.732 5.732a.5.5 0 0 1 .707 0l.915.914a.5.5 0 1 1-.708.708l-.914-.915a.5.5 0 0 1 0-.707M2 10a.5.5 0 0 1 .5-.5h1.586a.5.5 0 0 1 0 1H2.5A.5.5 0 0 1 2 10m9.5 0a.5.5 0 0 1 .5-.5h1.5a.5.5 0 0 1 0 1H12a.5.5 0 0 1-.5-.5m.754-4.246a.39.39 0 0 0-.527-.02L7.547 9.31a.91.91 0 1 0 1.302 1.258l3.434-4.297a.39.39 0 0 0-.029-.518z'/><path fill-rule='evenodd' d='M0 10a8 8 0 1 1 15.547 2.661c-.442 1.253-1.845 1.602-2.932 1.25C11.309 13.488 9.475 13 8 13c-1.474 0-3.31.488-4.615.911-1.087.352-2.49.003-2.932-1.25A8 8 0 0 1 0 10m8-7a7 7 0 0 0-6.603 9.329c.203.575.923.876 1.68.63C4.397 12.533 6.358 12 8 12s3.604.532 4.923.96c.757.245 1.477-.056 1.68-.631A7 7 0 0 0 8 3'/></g></svg>"
+FAVICON = (
+    "data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'>"
+    f"<rect width='32' height='32' rx='7' fill='{COR_DO_FAVICON}'/>"
+    "<g transform='translate(6 6) scale(1.25)' fill='%23ffffff'>"
+    f"{GLIFO_DO_FAVICON}</g></svg>"
+)
 
 BOOTSTRAP_CSS = "https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css"
 BOOTSTRAP_ICONS = "https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.3/font/bootstrap-icons.min.css"
@@ -43,6 +55,46 @@ GOOGLE_FONTS = (
 )
 FONT_STACK = "'Inter', system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif"
 MONO_STACK = "'JetBrains Mono', ui-monospace, SFMono-Regular, Menlo, monospace"
+
+# Papéis cromáticos na ordem em que o `:root` os declara, e o que cada um pinta.
+# Os VALORES vêm de identidade.py; a ORDEM e a explicação são comuns aos três
+# painéis — é nisto que a casca ser a mesma consiste.
+PAPEIS_DO_TEMA = (
+    ("--bg", "fundo da pagina"),
+    ("--surface", "cartao"),
+    ("--surface-2", "cabecalho de cartao, chip"),
+    ("--line", "borda"),
+    ("--accent", "acao primaria"),
+    ("--accent-2", "acao secundaria, realce"),
+    ("--brand-a", "marca, inicio do gradiente"),
+    ("--brand-b", "marca, fim do gradiente"),
+    ("--text-dim", "texto secundario"),
+)
+
+# Cor do texto: NÃO é papel cromático — vale o mesmo nos três painéis, e por
+# isso fica aqui e não na identidade.
+COR_DO_TEXTO = "#e6e8ee"
+
+# Papéis que as páginas servidas antes do login precisam: login e erro têm
+# cartão, borda e um botão, e mais nada.
+PAPEIS_ANTES_DO_LOGIN = ("--bg", "--surface", "--line", "--accent")
+
+
+def tokens_do_tema(recuo: str = "      ") -> str:
+    """Monta as linhas `--token: valor;` do bloco `:root` do painel."""
+    linhas = [
+        f"{recuo}{token}:{' ' * max(1, 12 - len(token))}{PALETA[token]};   /* {papel} */"
+        for token, papel in PAPEIS_DO_TEMA
+    ]
+    linhas.append(f"{recuo}--text:      {COR_DO_TEXTO};")
+    return "\n".join(linhas)
+
+
+def tokens_antes_do_login() -> str:
+    """A fatia do tema que as páginas anteriores ao login usam, em uma linha."""
+    valores = " ".join(f"{token}: {PALETA[token]};" for token in PAPEIS_ANTES_DO_LOGIN)
+    return f"{valores} --text: {COR_DO_TEXTO};"
+
 
 # Estado semântico -> (classe do badge, ícone, CHAVE de tradução).
 # O rótulo é resolvido na hora de desenhar, e não guardado pronto aqui: um
@@ -154,7 +206,7 @@ def render_notice_page(title: str, body: str, link_label: str = "",
   <title>{esc(title)}</title>
   <link rel="stylesheet" href="{BOOTSTRAP_CSS}">
   <link rel="stylesheet" href="{BOOTSTRAP_ICONS}">
-  <style>body {{ background: #6D0808; }}</style>
+  <style>body {{ background: {PALETA['--bg']}; }}</style>
 </head>
 <body class="d-flex align-items-center justify-content-center" style="min-height:100vh">
   <div class="card text-center" style="max-width:34rem">
@@ -244,12 +296,11 @@ def render_login_page(
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <meta name="robots" content="noindex, nofollow">
   <link rel="icon" href="{FAVICON}">
-  <title>LiteLlmRTKSync</title>
+  <title>{NOME_DO_PRODUTO}</title>
   <link rel="stylesheet" href="{BOOTSTRAP_CSS}">
   <link rel="stylesheet" href="{BOOTSTRAP_ICONS}">
   <style>
-    :root {{ --bg: #6D0808; --surface: #7d1414; --line: #a32626;
-             --accent: #ffce6b; --text: #e6e8ee; }}
+    :root {{ {tokens_antes_do_login()} }}
     body {{ background: var(--bg); color: var(--text); font-family: {FONT_STACK}; }}
     .card {{ background: var(--surface); border: 1px solid var(--line); }}
     .btn-primary {{ --bs-btn-bg: var(--accent); --bs-btn-border-color: var(--accent);
@@ -264,7 +315,7 @@ def render_login_page(
   <main class="card" style="max-width:24rem;width:100%">
     <div class="card-body p-4">
       <h1 class="h5 mb-1 d-flex align-items-center gap-2">
-        <i class="bi bi-shield-lock" aria-hidden="true"></i>LiteLlmRTKSync
+        <i class="bi bi-shield-lock" aria-hidden="true"></i>{NOME_DO_PRODUTO}
       </h1>
       <p class="text-secondary small mb-4">{esc(translate("auth.login_intro", lang))}</p>
       {aviso}
@@ -445,7 +496,7 @@ def render_optional_number(valor: Any, lang: str) -> str:
 def team_chip(team_id: Optional[str], team_aliases: Optional[Dict[str, str]], lang: str) -> str:
     """Célula do time: o apelido quando ele existe, o id quando não existe.
 
-    O `/key/list` do LiteLLM devolve `team_alias` SEMPRE nulo — o apelido só
+    O `/key/list` do gateway devolve `team_alias` SEMPRE nulo — o apelido só
     existe no `/team/list`. Por isso o rótulo legível chega aqui de fora, num
     mapa `{team_id: team_alias}`; sem ele a tela mostraria o UUID cru, que é
     correto mas ilegível. O id fica no `title` mesmo quando há apelido: quem
@@ -570,7 +621,7 @@ def credential_label(model: Any, lang: str) -> str:
     página; o que o operador precisa saber é se há credencial e onde ela mora.
 
     Sobre o último caso, que é o mais comum e o menos óbvio: o `/model/info` do
-    LiteLLM **remove** `api_key` da resposta — `pop("api_key", None)`, antes de
+    O gateway **remove** `api_key` da resposta — `pop("api_key", None)`, antes de
     qualquer mascaramento. Um modelo com chave perfeitamente válida chega aqui
     sem campo nenhum, e chamar isso de "nenhuma credencial declarada" afirmaria
     algo falso sobre o cadastro: manda o operador procurar uma configuração que
@@ -734,7 +785,7 @@ def render_connections_table(connections: List[Any], model_states: Dict[str, str
     """Conexões monitoradas: os destinos por trás dos modelos cadastrados.
 
     As mesmas sete colunas dos irmãos. Duas delas ficam em travessão de
-    propósito: um destino do LiteLLM não tem validade nem renovação — quem
+    propósito: um destino do gateway não tem validade nem renovação — quem
     expira é a credencial no provedor, e isso o gateway não conta. Travessão
     com a explicação no modal é honesto; inventar uma data não seria.
     """
@@ -802,7 +853,7 @@ def render_connections_table(connections: List[Any], model_states: Dict[str, str
 
 
 def render_combos_table(combos: List[Dict[str, Any]], lang: str) -> str:
-    """Combos de resiliência — no LiteLLM, os fallbacks do roteador.
+    """Combos de resiliência — no gateway, os fallbacks do roteador.
 
     Mesmas duas colunas dos irmãos (combo e cascata). O tipo de fallback vira um
     chip ao lado do nome quando não é o geral: `context_window` e
@@ -847,37 +898,6 @@ def render_combos_table(combos: List[Dict[str, Any]], lang: str) -> str:
             </tbody>
           </table>
         </div>"""
-
-
-def render_limits_card(findings: List[Dict[str, Any]], lang: str) -> str:
-    """Incoerências entre o limite da chave e o teto do nível acima.
-
-    A mensagem vem pronta do avaliador de limites: ela nomeia o campo, os dois
-    valores e a consequência. Resumir aqui produziria "limite incoerente", que
-    não diz a ninguém o que fazer a respeito.
-    """
-    if not findings:
-        return f"""
-        <div class="card-body">
-          <p class="mb-0 d-flex align-items-center gap-2">
-            <i class="bi bi-check-circle-fill text-success" aria-hidden="true"></i>
-            <span class="text-secondary">{esc(translate("limits.ok", lang))}</span>
-          </p>
-        </div>"""
-
-    items = []
-    for finding in findings:
-        actions = finding.get("actions") or []
-        message = actions[0] if actions else finding.get("name", "—")
-        items.append(f"""
-            <li class="list-group-item d-flex align-items-start gap-2">
-              <i class="bi bi-exclamation-triangle text-warning mt-1" aria-hidden="true"></i>
-              <span>{esc(message)}</span>
-            </li>""")
-
-    return f"""
-        <ul class="list-group list-group-flush">{"".join(items)}
-        </ul>"""
 
 
 def render_cron_history(history: List[Dict[str, Any]], lang: str) -> str:
@@ -1315,7 +1335,7 @@ def render_dashboard(
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <meta name="robots" content="noindex, nofollow">
   <link rel="icon" href="{FAVICON}">
-  <title>LiteLlmRTKSync</title>
+  <title>{NOME_DO_PRODUTO}</title>
   <link rel="stylesheet" href="{BOOTSTRAP_CSS}">
   <link rel="stylesheet" href="{BOOTSTRAP_ICONS}">
   <link rel="stylesheet" href="{FLAG_ICONS}">
@@ -1325,28 +1345,16 @@ def render_dashboard(
   <style>
     /* ------------------------------------------------------------------
        Identidade visual: os tres paineis da familia RTKSync tem a MESMA
-       estrutura e a MESMA folha de estilo. O que muda e o valor destes
-       tokens -- vinho profundo.
-       Trocar o produto e trocar estas oito linhas, nada mais.
+       estrutura e a MESMA folha de estilo. O que muda e o VALOR destes
+       tokens, e todos eles vem de identidade.py -- trocar o produto e
+       trocar aquele arquivo, nada mais.
 
-       O fundo nao e o vinho da marca (#6D0808): uma pagina inteira nele
-       cansa a vista em poucos minutos, e este painel fica aberto o dia
-       todo. A marca vive no gradiente, que e onde ela precisa estar.
+       O fundo nao e a cor da marca: uma pagina inteira nela cansa a vista
+       em poucos minutos, e este painel fica aberto o dia todo. A marca
+       vive no gradiente, que e onde ela precisa estar.
        ------------------------------------------------------------------ */
     :root {{
-      --bg:        #6D0808;   /* fundo da pagina */
-      --surface:   #7d1414;   /* cartao */
-      --surface-2: #8c1c1c;   /* cabecalho de cartao, chip */
-      --line:      #a32626;   /* borda */
-      --accent:    #ffce6b;   /* acao primaria */
-      --accent-2:  #ffe0a3;   /* acao secundaria, realce */
-      --brand-a:   #c62d2d;   /* marca, inicio do gradiente -- um passo acima
-                                 da linha: quando os dois valiam o mesmo, a
-                                 borda e a marca viravam a mesma cor na tela e
-                                 um dos dois papeis deixava de existir */
-      --brand-b:   #ffce6b;   /* marca, fim do gradiente */
-      --text:      #e6e8ee;
-      --text-dim:  #e3b9b9;
+{tokens_do_tema()}
     }}
     body {{ background: var(--bg); color: var(--text); }}
     .card {{ background: var(--surface); border: 1px solid var(--line); }}
@@ -1438,9 +1446,9 @@ def render_dashboard(
 
     <header class="d-flex flex-wrap align-items-center justify-content-between gap-3 mb-4">
       <div class="d-flex align-items-center gap-3">
-        <span class="brand-mark"><i class="bi bi-speedometer2" aria-hidden="true"></i></span>
+        <span class="brand-mark"><i class="bi {ICONE_DO_PRODUTO}" aria-hidden="true"></i></span>
         <div>
-          <h1 class="h4 mb-0">LiteLlmRTKSync</h1>
+          <h1 class="h4 mb-0">{NOME_DO_PRODUTO}</h1>
           <p class="text-secondary small mb-0 font-monospace">
             {esc(proxy.get("url") or translate("app.gateway_unset", lang))}
           </p>

@@ -1,9 +1,10 @@
-"""Configuração do LiteLlmRTKSync, toda por variável de ambiente."""
+"""Configuração deste sincronizador, toda por variável de ambiente."""
 
 import os
 from dataclasses import dataclass, field
 from typing import Optional, Tuple
 
+from .identidade import PREFIXO_DE_CONTAINER
 from .auth import (
     AUTH_PASSWORD_KEY,
     AUTH_USER_KEY,
@@ -24,6 +25,11 @@ def _flag(nome: str, padrao: str = "1") -> bool:
     return os.environ.get(nome, padrao).strip().lower() in ("1", "true", "yes", "on")
 
 
+# Endereço padrão do gateway: o nome de serviço do compose DESTE repositório.
+# O prefixo vem da identidade para que os três não colidam na mesma rede.
+URL_PADRAO_DO_GATEWAY = f"http://{PREFIXO_DE_CONTAINER}router:4000"
+
+
 @dataclass
 class Settings:
     """Tudo que o sincronizador precisa saber, e nada que ele deva adivinhar."""
@@ -33,7 +39,7 @@ class Settings:
     # curto genérico: sem LITELLM_URL definida este valor chega à tela, no cartão
     # de liveness, e um endereço que não resolve em rede nenhuma ensina errado
     # quem só olhou o painel.
-    litellm_url: str = "http://litellmrtk-router:4000"
+    litellm_url: str = URL_PADRAO_DO_GATEWAY
     master_key: str = ""
 
     # -- ciclo --------------------------------------------------------------
@@ -80,7 +86,7 @@ class Settings:
         senha = env_pass or ""
 
         return cls(
-            litellm_url=os.environ.get("LITELLM_URL", "http://litellmrtk-router:4000").rstrip("/"),
+            litellm_url=os.environ.get("LITELLM_URL", URL_PADRAO_DO_GATEWAY).rstrip("/"),
             master_key=os.environ.get("LITELLM_MASTER_KEY", ""),
             sync_interval=int(os.environ.get("SYNC_INTERVAL", "300")),
             refresh_margin=int(os.environ.get("REFRESH_MARGIN", "900")),

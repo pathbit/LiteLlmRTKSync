@@ -1,5 +1,8 @@
 #!/usr/bin/env python3
-"""Cadastra os gateways irmãos — 9Router e OmniRoute — como provedores do LiteLLM.
+"""Cadastra os gateways encadeados — 9Router e OmniRoute — como provedores do LiteLLM.
+
+O 9Router é o `litellmrtk-9router`, que sobe nesta mesma stack; o OmniRoute
+continua sendo o gateway de uma stack vizinha.
 
 O QUE ISTO RESOLVE
 
@@ -7,11 +10,16 @@ Uma requisição que chega no LiteLLM sai por um dos dois gateways, e é o gatew
 que escolhe a conta e o provedor final. Para isso o proxy precisa de duas coisas
 que não vêm de graça:
 
-  1. ALCANCE. Cada stack vive na sua própria rede de gestão — é o que impede um
-     painel de conversar com o gateway errado. O encontro acontece numa segunda
-     rede, `rtk-inference-net`, declarada como externa nos três composes e que
-     só os gateways e este proxy compartilham. Sem ela, `9rtk-router` sequer
-     resolve de dentro do container do LiteLLM.
+  1. ALCANCE. O 9Router é de casa: `litellmrtk-9router` sobe no mesmo compose
+     desta stack e é alcançado pela rede de gestão própria, sem depender de
+     mais nada. Foi a mudança que tornou a stack autossuficiente — antes este
+     script apontava para `9rtk-router`, que pertence à stack do 9RTKSync, e o
+     encadeamento só funcionava com o vizinho no ar.
+
+     O OmniRoute continua sendo de OUTRA stack, e para ele o encontro acontece
+     numa segunda rede, `rtk-inference-net`, declarada como externa nos composes
+     e que só os gateways e este proxy compartilham. Sem ela, `ominirtk-router`
+     sequer resolve de dentro do container do LiteLLM.
 
          docker network create rtk-inference-net
 
@@ -81,11 +89,12 @@ PREFIXO = "gateway-"
 # Os dois gateways irmãos.
 #
 # `api_base` COM `/v1`: o LiteLLM concatena "chat/completions" ao que receber.
-# Sem o `/v1` a requisição iria para `http://9rtk-router:20128/chat/completions`
-# e o gateway devolveria 404 — que o proxy relata como erro do provedor, não
-# como erro de configuração, e a pista se perde.
+# Sem o `/v1` a requisição iria para
+# `http://litellmrtk-9router:20128/chat/completions` e o gateway devolveria 404
+# — que o proxy relata como erro do provedor, não como erro de configuração, e a
+# pista se perde.
 #
-# `api_base` pelo NOME DO SERVIÇO, nunca `127.0.0.1:8081`: dentro do container
+# `api_base` pelo NOME DO SERVIÇO, nunca `127.0.0.1:8383`: dentro do container
 # do LiteLLM o loopback é o próprio LiteLLM.
 #
 # O prefixo duplo em `model` não é engano. O LiteLLM consome só o primeiro
@@ -126,14 +135,19 @@ GATEWAYS: List[Dict[str, Any]] = [
         "nome": "9router",
         "model_name": f"{PREFIXO}9router-gemini",
         "model": "openai/gemini/gemini-3.8-flash",
-        "api_base": "http://9rtk-router:20128/v1",
-        # Endereco publicado no host: a conferencia da chave roda daqui,
-        # fora da rede de inferencia, onde o nome interno nao resolve.
-        "api_base_host": "http://127.0.0.1:8081/v1",
+        # O 9Router DESTA stack, alcançado pela rede de gestão própria. Já
+        # apontou para `http://9rtk-router:20128/v1`, que pertence à stack do
+        # 9RTKSync: funcionava e era frágil -- derrubar a stack do vizinho
+        # quebrava a inferência daqui, e subir só esta stack dava um proxy sem
+        # para onde encadear. Ver docs/wiki/Chaining-Gateways.md.
+        "api_base": "http://litellmrtk-9router:20128/v1",
+        # Endereco publicado no host: a conferencia da chave roda daqui, de
+        # fora das redes Docker, onde o nome interno nao resolve.
+        "api_base_host": "http://127.0.0.1:8383/v1",
         "env_var": "NINEROUTER_API_KEY",
         "credential_name": f"{PREFIXO}cred-9router",
         # Só para dizer ao operador onde conferir o rastro da chamada.
-        "container": "9rtk-router",
+        "container": "litellmrtk-9router",
     },
     {
         "nome": "omniroute",
@@ -163,12 +177,27 @@ def credenciais_existentes(api: AdminAPI) -> set:
     }
 
 
-def modelos_existentes(api: AdminAPI) -> set:
-    return {
-        str(m.get("model_name"))
-        for m in api.list_models()
-        if m.get("model_name")
-    }
+def modelos_existentes(api: AdminAPI) -> Dict[str, Dict[str, Any]]:
+    """Nome do modelo -> o que o proxy tem cadastrado nele.
+
+    Devolve um mapa, e não um conjunto de nomes, porque "já existe" não é a
+    pergunta toda: o modelo pode existir apontando para o gateway ERRADO. Foi o
+    que aconteceu ao mudar o encadeamento de `9rtk-router` (stack vizinha) para
+    `litellmrtk-9router` (esta stack) -- o nome não mudou, então a verificação
+    por nome dizia "já existe" e o `api_base` antigo sobrevivia no Postgres.
+    """
+    mapa: Dict[str, Dict[str, Any]] = {}
+    for modelo in api.list_models():
+        nome = modelo.get("model_name")
+        if not nome:
+            continue
+        params = modelo.get("litellm_params") or {}
+        mapa[str(nome)] = {
+            "api_base": params.get("api_base"),
+            "model": params.get("model"),
+            "credential_name": params.get("litellm_credential_name"),
+        }
+    return mapa
 
 
 def registrar(api: AdminAPI, escrever: bool = True) -> int:
@@ -235,10 +264,29 @@ def registrar(api: AdminAPI, escrever: bool = True) -> int:
             log(f"  + credencial '{nome_cred}' criada a partir de {gw['env_var']}")
 
         nome_modelo = gw["model_name"]
-        if nome_modelo in modelos:
-            log(f"  = modelo '{nome_modelo}' já existe")
-            continue
-        if not escrever:
+        cadastrado = modelos.get(nome_modelo)
+        if cadastrado is not None:
+            # Confere o DESTINO, não só o nome. Um `api_base` obsoleto é
+            # silencioso: o modelo aparece na lista, o `--testar` até responde
+            # 200, e a chamada sai pelo gateway antigo -- a linha de prova
+            # aparece no log do vizinho, e não no do gateway desta stack.
+            atual = cadastrado.get("api_base")
+            if atual == gw["api_base"]:
+                log(f"  = modelo '{nome_modelo}' já existe → {atual}")
+                continue
+            if not escrever:
+                log(f"  ~ modelo '{nome_modelo}' seria reapontado: {atual} → {gw['api_base']}")
+                continue
+            # Recriar em vez de atualizar: `/model/update` não existe em toda
+            # versão do proxy, e apagar-e-criar dá o mesmo resultado com uma
+            # rota só. O id é derivado do nome, então ele volta igual.
+            try:
+                api.request("POST", "/model/delete", {"id": gw["model_name"]})
+            except BenchError:
+                # Versões diferentes expõem rotas diferentes para apagar; se
+                # não deu, o POST abaixo ainda tenta sobrescrever.
+                pass
+        elif not escrever:
             log(f"  + modelo '{nome_modelo}' seria criado → {gw['model']}")
             continue
         api.request("POST", "/model/new", {
@@ -257,8 +305,16 @@ def registrar(api: AdminAPI, escrever: bool = True) -> int:
             # diferente para nome diferente.
             "model_info": {"id": gw["model_name"]},
         })
-        criados += 1
-        log(f"  + modelo '{nome_modelo}' criado → {gw['model']}")
+        # O sucesso é anunciado DEPOIS do POST, nunca antes. No reapontamento o
+        # modelo antigo já foi apagado quando esta linha roda: anunciar antes
+        # faria a falha do POST imprimir "reapontado" seguido de "falhou", com
+        # o modelo sumido do proxy e a saída dizendo o contrário.
+        if cadastrado is None:
+            criados += 1
+            log(f"  + modelo '{nome_modelo}' criado → {gw['model']}")
+        else:
+            log(f"  ~ modelo '{nome_modelo}' reapontado: "
+                f"{cadastrado.get('api_base')} → {gw['api_base']}")
 
     return criados
 

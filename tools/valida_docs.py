@@ -95,6 +95,26 @@ RUIDO = re.compile(
 PASTAS_IGNORADAS = {".git", "tmp", "node_modules", "__pycache__", ".venv", "assets"}
 
 
+# Módulo Python citado na documentação: `render.py`, `client.py`. A crase é
+# opcional porque tabela de arquitetura costuma escrever sem ela.
+RX_MODULO = re.compile(r"\b([a-z_][a-z0-9_]*\.py)\b")
+
+# Módulos que pertencem a OUTRO projeto e são citados de propósito. Mesma razão
+# de FLAGS_DE_TERCEIROS: o arquivo é real, só não é deste repositório.
+MODULOS_DE_TERCEIROS = {
+    "setup.py",       # convenção de empacotamento, citada em instruções de build
+    "manage.py",      # Django, aparece em comparação de layout
+    "conftest.py",    # pytest; pode ser citado como recomendação sem existir aqui
+    "proxy_server.py",  # LiteLLM upstream
+    "main.py",        # ponto de entrada do upstream em exemplos de implantação
+    # Os dois limitadores do LiteLLM upstream. A página de dimensionamento tem
+    # de nomeá-los porque é esse o arquivo que o operador vai procurar na
+    # implantação dele -- e ele nunca vai existir neste repositório.
+    "parallel_request_limiter.py",
+    "parallel_request_limiter_v3.py",
+}
+
+
 def arquivos_do_repo(raiz: str, extensoes: Tuple[str, ...]) -> List[str]:
     """Arquivos do repositório com essas extensões — só os que são FONTE.
 
@@ -134,6 +154,15 @@ def arquivos_do_repo(raiz: str, extensoes: Tuple[str, ...]) -> List[str]:
 def paginas(raiz: str) -> List[str]:
     """Todo markdown versionado do repositório, menos os upstreams clonados."""
     return arquivos_do_repo(raiz, (".md",))
+
+
+def modulos_do_repo(raiz: str) -> Set[str]:
+    """Nome de arquivo de todo módulo Python que existe aqui.
+
+    Só o basename: a documentação cita `render.py`, não o caminho inteiro, e
+    quem lê quer saber se o arquivo existe, não onde exatamente ele mora.
+    """
+    return {os.path.basename(c) for c in arquivos_do_repo(raiz, (".py",))}
 
 
 def fonte_do_repo(raiz: str) -> str:
@@ -185,6 +214,7 @@ def verificar(raiz: str, nome: str) -> List[str]:
     env_ok = env_do_codigo(fonte)
     flags_ok = flags_do_codigo(fonte)
     rotas_ok = rotas_do_codigo(fonte)
+    modulos_ok = modulos_do_repo(raiz)
 
     for pagina in paginas(raiz):
         rel = os.path.relpath(pagina, raiz)
@@ -212,6 +242,18 @@ def verificar(raiz: str, nome: str) -> List[str]:
                     continue
                 if var not in env_ok:
                     problemas.append(f"{nome}/{rel}:{n}  variável citada e não usada no código: {var}")
+
+            # Módulo que a página descreve e que não existe mais. É o erro que
+            # a convergência dos irmãos produz em série: um módulo é fundido
+            # noutro, o código continua verde porque ninguém importa o nome
+            # velho, e a tabela de arquitetura segue descrevendo um arquivo
+            # apagado. Quem lê a wiki procura o arquivo e não acha.
+            for modulo in RX_MODULO.findall(linha):
+                if modulo in MODULOS_DE_TERCEIROS or modulo in modulos_ok:
+                    continue
+                problemas.append(
+                    f"{nome}/{rel}:{n}  módulo citado e inexistente no repositório: {modulo}"
+                )
 
             # Uma linha que invoca outro programa traz as flags DELE. Acusar
             # `pip install --upgrade` de nao existir no nosso CLI e ruido, e

@@ -1,4 +1,4 @@
-"""Motor de agendamento em background (CronScheduler) para o LiteLlmRTKSync.
+"""Motor de agendamento em background (CronScheduler) deste sincronizador.
 
 A classe é a mesma dos projetos irmãos — recebe um callback e um intervalo, e
 não sabe nada sobre o que o ciclo faz. O que muda é o **vocabulário do resumo**,
@@ -16,6 +16,7 @@ import time
 from datetime import datetime, timezone
 from typing import Any, Callable, Dict, List, Optional, Tuple
 
+from .identidade import NOME_DO_PRODUTO
 from .logs import get_logger
 
 
@@ -78,13 +79,13 @@ def summarize_cycle(res: Any) -> Tuple[int, int, Optional[str]]:
 
 
 class CronScheduler:
-    """Agendador em background que mantém a inspeção contínua do proxy LiteLLM."""
+    """Agendador em background que mantém a inspeção contínua do gateway."""
 
     def __init__(
         self,
         sync_callback: Callable[[], Dict[str, Any]],
         interval_seconds: int = 300,
-        name: str = "LiteLlmRTKSync-Cron",
+        name: str = f"{NOME_DO_PRODUTO}-Cron",
     ):
         self.sync_callback = sync_callback
         self.interval_seconds = max(10, interval_seconds)

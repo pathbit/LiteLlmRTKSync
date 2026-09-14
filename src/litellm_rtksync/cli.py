@@ -1,4 +1,4 @@
-"""Linha de comando do LiteLlmRTKSync."""
+"""Linha de comando deste sincronizador."""
 
 import argparse
 import signal
@@ -6,16 +6,17 @@ import sys
 import time
 
 from .config import Settings
-from .engine import LiteLLMSyncEngine, log_msg
-from .limits import SEVERIDADE_INCOERENTE, SEVERIDADE_SEM_TETO, avaliar
+from .gateway import SyncEngine, log_msg
+from .identidade import NOME_DO_GATEWAY, NOME_DO_PRODUTO
+from .gateway import SEVERIDADE_INCOERENTE, SEVERIDADE_SEM_TETO, avaliar
 from .logs import setup_logging
 
 
 def imprimir_status(settings: Settings) -> int:
     """Tabela de estado. Devolve o código de saída: 1 se houver incoerência."""
-    motor = LiteLLMSyncEngine(settings)
+    motor = SyncEngine(settings)
     if not motor.client.health():
-        print(f"[ERRO] Proxy LiteLLM inacessível em {settings.litellm_url}", file=sys.stderr)
+        print(f"[ERRO] Proxy {NOME_DO_GATEWAY} inacessível em {settings.litellm_url}", file=sys.stderr)
         return 2
 
     chaves = motor.client.list_keys()
@@ -28,9 +29,9 @@ def imprimir_status(settings: Settings) -> int:
     print(f"   Proxy: {settings.litellm_url}")
     print("=" * largura)
 
-    from .models import VirtualKey, summarize
+    from .models import VirtualKeyRecord, summarize
 
-    virtuais = [VirtualKey(k) for k in chaves]
+    virtuais = [VirtualKeyRecord(k) for k in chaves]
     resumo = summarize(virtuais, settings.refresh_margin)
     print(f"\n[*] Chaves virtuais ({len(virtuais)}):")
     print(f"  {'APELIDO':<26} {'TIME':<18} {'ESTADO':<14} {'VALIDADE'}")
@@ -66,12 +67,12 @@ def imprimir_status(settings: Settings) -> int:
 
 
 def rodar_daemon(settings: Settings) -> None:
-    motor = LiteLLMSyncEngine(settings)
+    motor = SyncEngine(settings)
     rodando = True
 
     def ao_receber_sinal(sinal, quadro):
         nonlocal rodando
-        print(f"\n[!] Sinal {sinal} recebido. Encerrando o LiteLlmRTKSync...", flush=True)
+        print(f"\n[!] Sinal {sinal} recebido. Encerrando o {NOME_DO_PRODUTO}...", flush=True)
         rodando = False
 
     signal.signal(signal.SIGINT, ao_receber_sinal)
@@ -121,10 +122,15 @@ def rodar_daemon(settings: Settings) -> None:
 
 def main() -> None:
     parser = argparse.ArgumentParser(
-        prog="litellmrtksync",
-        description="LiteLlmRTKSync · inspeção de chaves virtuais, credenciais e limites do LiteLLM",
+        prog=NOME_DO_PRODUTO.lower(),
+        description=(
+            f"{NOME_DO_PRODUTO} · inspeção de chaves virtuais, "
+            f"credenciais e limites do {NOME_DO_GATEWAY}"
+        ),
     )
-    parser.add_argument("--url", help="Endereço do proxy LiteLLM (padrão: LITELLM_URL)")
+    parser.add_argument(
+        "--url", help=f"Endereço do proxy {NOME_DO_GATEWAY} (padrão: LITELLM_URL)"
+    )
     parser.add_argument("--status", action="store_true", help="Imprime o estado e sai")
     parser.add_argument("--once", action="store_true", help="Executa um ciclo e sai")
     parser.add_argument("--daemon", action="store_true", help="Modo contínuo (padrão)")
@@ -168,7 +174,7 @@ def main() -> None:
         sys.exit(imprimir_status(settings))
 
     if args.once:
-        resultado = LiteLLMSyncEngine(settings).sync_all()
+        resultado = SyncEngine(settings).sync_all()
         log_msg(
             "INFO",
             f"Ciclo concluído: {resultado['keys']} chave(s), {resultado['models']} modelo(s), "

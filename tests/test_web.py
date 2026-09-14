@@ -21,9 +21,9 @@ import urllib.error
 import urllib.request
 
 from litellm_rtksync.config import Settings
-from litellm_rtksync.models import VirtualKey
+from litellm_rtksync.models import VirtualKeyRecord
 from litellm_rtksync.render import render_keys_table
-from litellm_rtksync.web import LiteLlmDashboardHandler, start_web
+from litellm_rtksync.web import DashboardHandler, start_web
 
 PORTA = 19390
 BASE = f"http://127.0.0.1:{PORTA}"
@@ -62,9 +62,9 @@ class MotorFalso:
         self.client = ClienteFalso()
 
     def sync_all(self):
-        from litellm_rtksync.engine import LiteLLMSyncEngine
+        from litellm_rtksync.gateway import SyncEngine
 
-        real = LiteLLMSyncEngine(self.settings, client=self.client)
+        real = SyncEngine(self.settings, client=self.client)
         return real.sync_all()
 
 
@@ -91,8 +91,8 @@ class TestPainel(unittest.TestCase):
             agendador.stop()
         cls.servidor.shutdown()
         cls.servidor.server_close()
-        LiteLlmDashboardHandler.last_cycle = {}
-        LiteLlmDashboardHandler.cron_scheduler = None
+        DashboardHandler.last_cycle = {}
+        DashboardHandler.cron_scheduler = None
         cls.tmp.cleanup()
 
     # -- auxiliares ---------------------------------------------------------
@@ -375,7 +375,7 @@ class TestRotuloDoTime(unittest.TestCase):
     """
 
     def chaves(self, *team_ids):
-        return [VirtualKey({"key_alias": f"k{i}", "team_id": t})
+        return [VirtualKeyRecord({"key_alias": f"k{i}", "team_id": t})
                 for i, t in enumerate(team_ids)]
 
     def test_the_alias_replaces_the_id_when_the_map_has_it(self):
@@ -416,12 +416,12 @@ class TestRotuloDoTime(unittest.TestCase):
             "run_cycle": lambda self: {"details": []},
             "probe_proxy": lambda self: (True, 1),
         })()
-        anterior = LiteLlmDashboardHandler.last_cycle
-        LiteLlmDashboardHandler.last_cycle = {"details": []}
+        anterior = DashboardHandler.last_cycle
+        DashboardHandler.last_cycle = {"details": []}
         try:
-            return LiteLlmDashboardHandler.collect_dashboard_state(stub)
+            return DashboardHandler.collect_dashboard_state(stub)
         finally:
-            LiteLlmDashboardHandler.last_cycle = anterior
+            DashboardHandler.last_cycle = anterior
 
     def test_the_panel_builds_the_map_from_team_list(self):
         estado = self.montar_estado(ClienteFalso())

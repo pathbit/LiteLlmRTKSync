@@ -1,4 +1,4 @@
-"""Painel do LiteLlmRTKSync, renderizado inteiramente no servidor.
+"""Painel deste sincronizador, renderizado inteiramente no servidor.
 
 Este módulo cuida do transporte — rotas, autenticação, cabeçalhos e ações. Todo
 o HTML vive em `render.py`, como nos projetos irmãos, porque foi a mistura das
@@ -18,6 +18,7 @@ Mesma postura dos irmãos, pelas mesmas razões:
 import base64
 import json
 import re
+import sys
 import threading
 import time
 from http import HTTPStatus
@@ -28,11 +29,30 @@ from urllib.parse import parse_qs, urlencode, urlparse
 from .config import Settings
 from .cron import CronScheduler
 from .i18n import DEFAULT_LANGUAGE, normalize_language, translate
+from .identidade import NOME_DO_PRODUTO
 from .logs import get_logger
-from .models import ModelEntry, VirtualKey, fallback_combos, group_connections
+from .gateway import fallback_combos
+from .models import RegisteredModelRecord, VirtualKeyRecord, group_connections
 from .prefs import get_preference, set_preference
 from . import protecao, sessao, sso
 from .render import render_dashboard, render_login_page, render_notice_page
+
+
+# Erros de socket que significam apenas "o cliente desistiu antes de ler a
+# resposta" — comportamento normal de health check, não falha do servidor.
+CLIENT_DISCONNECT_ERRORS = (BrokenPipeError, ConnectionResetError, ConnectionAbortedError)
+
+
+class QuietThreadingHTTPServer(ThreadingHTTPServer):
+    """Servidor multi-thread que não polui o log quando o cliente desconecta antes da hora."""
+
+    daemon_threads = True
+
+    def handle_error(self, request, client_address):
+        exc = sys.exc_info()[1]
+        if isinstance(exc, CLIENT_DISCONNECT_ERRORS):
+            return
+        super().handle_error(request, client_address)
 
 
 def strip_markup(text: str) -> str:
@@ -40,19 +60,19 @@ def strip_markup(text: str) -> str:
     return re.sub(r"<[^>]+>", "", text)
 
 
-class LiteLlmDashboardHandler(BaseHTTPRequestHandler):
+class DashboardHandler(BaseHTTPRequestHandler):
     settings: Settings = None
     engine: Any = None
     cron_scheduler: Any = None
     last_cycle: Dict[str, Any] = {}
     _lock = threading.Lock()
 
-    server_version = "LiteLlmRTKSync"
+    server_version = NOME_DO_PRODUTO
     sys_version = ""
 
     def version_string(self) -> str:
         # Sem isto o BaseHTTPRequestHandler concatena server_version com
-        # sys_version e serve "LiteLlmRTKSync " -- com espaco sobrando.
+        # sys_version e serve "<produto> " -- com espaco sobrando.
         return self.server_version
 
     # -- cabeçalhos ---------------------------------------------------------
@@ -176,7 +196,7 @@ class LiteLlmDashboardHandler(BaseHTTPRequestHandler):
             translate("auth.required_body", lang),
         )
         self.send_response(HTTPStatus.UNAUTHORIZED)
-        self.send_header("WWW-Authenticate", 'Basic realm="LiteLlmRTKSync"')
+        self.send_header("WWW-Authenticate", f'Basic realm="{NOME_DO_PRODUTO}"')
         self.send_header("Content-Type", "text/html; charset=utf-8")
         self.send_header("Content-Length", str(len(body)))
         self.send_header("Cache-Control", "no-store")
@@ -353,7 +373,7 @@ class LiteLlmDashboardHandler(BaseHTTPRequestHandler):
         self.send_response(HTTPStatus.OK)
         self.send_header("Content-Type", "text/html; charset=utf-8")
         self.send_header("Content-Length", str(len(corpo)))
-        self.send_header("Set-Cookie", sessao.cabecalho_para_apagar_estado_sso())
+        self.send_header("Set-Cookie", sessao.cabecalho_para_apagar_estado())
         self.send_header("Cache-Control", "no-store")
         self.end_headers()
         self.write_body(corpo)
@@ -382,7 +402,7 @@ class LiteLlmDashboardHandler(BaseHTTPRequestHandler):
         self.send_header(
             "Set-Cookie", sessao.cabecalho_para_gravar(sessao.emitir("sso:" + email))
         )
-        self.send_header("Set-Cookie", sessao.cabecalho_para_apagar_estado_sso())
+        self.send_header("Set-Cookie", sessao.cabecalho_para_apagar_estado())
         self.send_header("Cache-Control", "no-store")
         self.end_headers()
         self.write_body(corpo)
@@ -422,7 +442,7 @@ class LiteLlmDashboardHandler(BaseHTTPRequestHandler):
         )
         self.send_header(
             "Set-Cookie",
-            sessao.cabecalho_para_gravar_estado_sso(
+            sessao.cabecalho_para_gravar_estado(
                 sessao.emitir_estado_sso(state, nonce, verificador)
             ),
         )
@@ -720,7 +740,7 @@ class LiteLlmDashboardHandler(BaseHTTPRequestHandler):
             return result
 
     def run_cycle(self) -> Dict[str, Any]:
-        return LiteLlmDashboardHandler.execute_cycle()
+        return DashboardHandler.execute_cycle()
 
     def handle_cron_run(self) -> None:
         """Dispara o agendador agora, registrando a execução no histórico dele.
@@ -923,7 +943,7 @@ class LiteLlmDashboardHandler(BaseHTTPRequestHandler):
 
     def serve_status_json(self) -> None:
         """Projeção explícita. Nenhum token, nenhuma chave de provedor."""
-        state = LiteLlmDashboardHandler.last_cycle or {}
+        state = DashboardHandler.last_cycle or {}
         payload = json.dumps(
             {
                 "timestamp": state.get("timestamp"),
@@ -975,7 +995,7 @@ class LiteLlmDashboardHandler(BaseHTTPRequestHandler):
 
     def collect_dashboard_state(self) -> Dict[str, Any]:
         """Lê tudo o que a página precisa. Roda no servidor: a master key nunca sai daqui."""
-        state = LiteLlmDashboardHandler.last_cycle or self.run_cycle()
+        state = DashboardHandler.last_cycle or self.run_cycle()
 
         keys: List[Any] = []
         models: List[Any] = []
@@ -983,11 +1003,11 @@ class LiteLlmDashboardHandler(BaseHTTPRequestHandler):
         team_aliases: Dict[str, str] = {}
         if self.engine:
             try:
-                keys = [VirtualKey(k) for k in self.engine.client.list_keys()]
+                keys = [VirtualKeyRecord(k) for k in self.engine.client.list_keys()]
             except Exception:
                 keys = []
             try:
-                models = [ModelEntry(m) for m in self.engine.client.list_models()]
+                models = [RegisteredModelRecord(m) for m in self.engine.client.list_models()]
             except Exception:
                 models = []
             # O apelido do time NÃO vem no /key/list (o campo existe na
@@ -1032,7 +1052,7 @@ class LiteLlmDashboardHandler(BaseHTTPRequestHandler):
         return {
             "keys": keys,
             "models": models,
-            # As conexões não têm rota própria no LiteLLM: elas SÃO os destinos
+            # As conexões não têm rota própria no gateway: elas SÃO os destinos
             # declarados pelos modelos, agrupados por (provedor, api_base).
             "connections": group_connections(models),
             "combos": combos,
@@ -1082,31 +1102,33 @@ class LiteLlmDashboardHandler(BaseHTTPRequestHandler):
         self.respond_html(content)
 
 
-def start_web(settings: Settings, engine: Any) -> ThreadingHTTPServer:
+def start_web(settings: Settings, engine: Any) -> QuietThreadingHTTPServer:
     """Sobe o painel em uma thread própria e devolve o servidor.
 
     O agendador é criado sempre, mesmo com `CRON_ENABLED=0`: só assim o botão
     "Executar agora" continua funcionando e o histórico existe para ser lido.
     O que a flag controla é o laço automático, não a existência do agendador.
     """
-    LiteLlmDashboardHandler.settings = settings
-    LiteLlmDashboardHandler.engine = engine
+    DashboardHandler.settings = settings
+    DashboardHandler.engine = engine
 
     scheduler = CronScheduler(
-        sync_callback=LiteLlmDashboardHandler.execute_cycle,
+        sync_callback=DashboardHandler.execute_cycle,
         interval_seconds=settings.cron_interval,
-        name="LiteLlmRTKSync-CronScheduler",
+        name=f"{NOME_DO_PRODUTO}-CronScheduler",
     )
-    LiteLlmDashboardHandler.cron_scheduler = scheduler
+    DashboardHandler.cron_scheduler = scheduler
 
-    server = ThreadingHTTPServer((settings.web_host, settings.web_port), LiteLlmDashboardHandler)
+    server = QuietThreadingHTTPServer(
+        (settings.web_host, settings.web_port), DashboardHandler
+    )
     # Pendurado no servidor para que quem o desligar (CLI, teste) também consiga
     # parar o agendador: são o mesmo ciclo de vida.
     server.cron_scheduler = scheduler
     # E o ciclo do painel fica alcançável de fora: com o agendador desligado
     # (`CRON_ENABLED=0`) quem roda os ciclos é o laço do CLI, e chamar
     # `engine.sync_all` direto de lá deixaria a tela presa no primeiro resultado.
-    server.execute_cycle = LiteLlmDashboardHandler.execute_cycle
+    server.execute_cycle = DashboardHandler.execute_cycle
     server.daemon_threads = True
     thread = threading.Thread(target=server.serve_forever, daemon=True)
     thread.start()

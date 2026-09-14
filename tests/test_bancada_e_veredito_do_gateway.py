@@ -26,10 +26,10 @@ import unittest
 from datetime import datetime, timedelta, timezone
 import urllib.error
 
-from litellm_rtksync.client import LiteLLMClient
-from litellm_rtksync.engine import LiteLLMSyncEngine, _classificar_erro_do_gateway
+from litellm_rtksync.gateway import GatewayClient
+from litellm_rtksync.gateway import SyncEngine, _classificar_erro_do_gateway
 from litellm_rtksync.config import Settings
-from litellm_rtksync.models import ModelEntry
+from litellm_rtksync.models import RegisteredModelRecord
 
 RAIZ = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, os.path.join(RAIZ, "tools"))
@@ -383,10 +383,10 @@ class TestVereditoDoGateway(unittest.TestCase):
 
         settings = Settings(litellm_url="http://proxy:4000", master_key="mk",
                             validate_credentials=True, validation_timeout=2.0)
-        motor = LiteLLMSyncEngine(settings)
-        motor.client = LiteLLMClient("http://proxy:4000", "mk", opener=opener)
+        motor = SyncEngine(settings)
+        motor.client = GatewayClient("http://proxy:4000", "mk", opener=opener)
         resumo = {"details": [], "invalid_credentials": 0}
-        motor._verificar_modelos([ModelEntry(m) for m in modelos], resumo)
+        motor._verificar_modelos([RegisteredModelRecord(m) for m in modelos], resumo)
         return resumo
 
     @staticmethod
