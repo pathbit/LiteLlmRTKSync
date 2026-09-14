@@ -79,7 +79,7 @@ IDENTICOS = (
 # propósito: um teto com margem é permissão para piorar um pouco, e "um pouco"
 # foi como se chegou a mil linhas de diferença.
 TETOS_DE_DIVERGENCIA = {
-    "i18n.py": 503,
+    "i18n.py": 12,
     "models.py": 680,
     "render.py": 1633,
     "sso.py": 1354,

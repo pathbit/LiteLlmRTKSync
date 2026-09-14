@@ -251,6 +251,12 @@ services:
     # Para um painel que le credenciais, a segunda e quase sempre a certa.
     image: tailscale/tailscale:latest
     container_name: litellmrtk-tailnet
+    # UNICA excecao a regra "container_name igual ao hostname" desta stack, e de
+    # proposito: o hostname deste container vira o NOME DO NO na tailnet, ou seja,
+    # o endereco que voce digita no navegador (http://litellmrtk:9090). Com
+    # `litellmrtk-tailnet` viraria http://litellmrtk-tailnet:9090 -- mais longo de
+    # digitar, e sem ganho nenhum, porque dentro da stack ninguem alcanca este
+    # container pelo nome: ele existe para expor o painel para FORA.
     hostname: litellmrtk
     profiles: ["tailnet"]
     restart: unless-stopped
