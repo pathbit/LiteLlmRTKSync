@@ -280,7 +280,7 @@ class DashboardHandler(BaseHTTPRequestHandler):
     # "você precisa entrar" e "isso não existe".
     ROTAS_CONHECIDAS = {
         "/", "/index.html", "/healthz", "/login", "/logout", "/robots.txt",
-        "/favicon.ico", "/credenciais-atualizadas", "/logs",
+        "/favicon.ico", "/credenciais-atualizadas",
     }
     PREFIXOS_CONHECIDOS = ("/api/", "/acoes/")
 
@@ -350,6 +350,10 @@ class DashboardHandler(BaseHTTPRequestHandler):
             return
         if path == "/sso/saml/iniciar":
             self.inicia_saml()
+            return
+
+        if path == "/favicon.ico":
+            self.serve_favicon()
             return
 
         if not self.require_auth():
@@ -501,6 +505,23 @@ class DashboardHandler(BaseHTTPRequestHandler):
         self.write_body(corpo)
 
     # -- entrada ------------------------------------------------------------
+
+
+    def serve_favicon(self) -> None:
+        """204: o ícone da aba vem do data URI embutido, não de um arquivo.
+
+        Servir o SVG por aqui o deixaria atrás da autenticação, e a aba ficaria
+        sem ícone até o operador entrar -- foi por isso que ele virou data URI.
+        Mas devolver 404 faria o navegador registrar um erro em toda visita, já
+        que ele pede `/favicon.ico` por conta própria. 204 encerra a conversa
+        sem corpo e sem erro.
+        """
+        self.send_response(HTTPStatus.NO_CONTENT)
+        for nome, valor in self.SECURITY_HEADERS:
+            self.send_header(nome, valor)
+        self.send_header("Cache-Control", "public, max-age=86400")
+        self.send_header("Content-Length", "0")
+        self.end_headers()
 
     def pagina_de_login(self, lang: str, erro: str = "", com_desafio: bool = True) -> bytes:
         """Monta o formulário de entrada com o desafio que o endereço merece.
