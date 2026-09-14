@@ -80,3 +80,26 @@ _APELIDO = NOME_DO_PRODUTO.lower()
 # são credenciais distintas: cada um tem o seu domínio de assinatura.
 NOME_DO_COOKIE = f"{_APELIDO}_sessao"
 NOME_DO_COOKIE_DE_ESTADO = f"{_APELIDO}_estado_sso"
+
+# As duas chaves de tradução que dependem do que ESTE gateway faz. O catálogo de
+# `i18n.py` é o mesmo texto nos três irmãos; estas duas não podiam ser, porque o
+# 9Router e o OmniRoute renovam credencial OAuth e o LiteLLM apenas inspeciona --
+# não há OAuth para renovar lá. Chamar os três de "agendador de renovação"
+# deixaria um deles mentindo na tela.
+#
+# Ficam aqui, e não no catálogo, porque este é o arquivo onde mora o que muda de
+# produto para produto. O `i18n.py` sobrepõe estas por cima das comuns.
+ROTULOS_DO_PRODUTO = {
+    "en": {
+        "cron.title": "Inspection scheduler",
+        "cron.result_line": "{inspected} inspected · {findings} findings ({duration}ms)",
+    },
+    "pt": {
+        "cron.title": "Agendador de inspeção",
+        "cron.result_line": "{inspected} inspecionados · {findings} achados ({duration}ms)",
+    },
+    "es": {
+        "cron.title": "Programador de inspección",
+        "cron.result_line": "{inspected} inspeccionados · {findings} hallazgos ({duration}ms)",
+    },
+}

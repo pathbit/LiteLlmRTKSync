@@ -15,7 +15,7 @@ diverge por omissão é como os três se separaram da primeira vez.
 
 from typing import Dict
 
-from .identidade import NOME_DO_GATEWAY
+from .identidade import ROTULOS_DO_PRODUTO, NOME_DO_GATEWAY
 
 DEFAULT_LANGUAGE = "en"
 
@@ -72,8 +72,8 @@ TRANSLATIONS: Dict[str, Dict[str, str]] = {
         "gateway.offline": "OFFLINE",
         "gateway.no_response": "no response",
         # Vocabulário do ciclo: o trabalho que este agendador faz muda com o
-        # gateway, e `render.py` interpola marcadores diferentes.
-        "cron.title": "Inspection scheduler",
+        # gateway, e o texto acompanha.
+        "cron.title": "Scheduler",
         "cron.run_now": "Run now",
         "cron.active": "Active · every {interval}s",
         "cron.disabled": "Disabled (CRON_ENABLED=0)",
@@ -85,8 +85,8 @@ TRANSLATIONS: Dict[str, Dict[str, str]] = {
         "cron.last_result": "Last result",
         "cron.no_runs": "No cycle has run yet",
         # Vocabulário do ciclo: o trabalho que este agendador faz muda com o
-        # gateway, e `render.py` interpola marcadores diferentes.
-        "cron.result_line": "{inspected} inspected · {findings} findings ({duration}ms)",
+        # gateway, e o texto acompanha.
+        "cron.result_line": "{inspected} · ({duration}ms)",
         "cron.unavailable": "The scheduler is not available on this instance.",
         "cron.failed": "The cycle could not be completed: {error}",
         "connections.title": "Monitored connections",
@@ -367,8 +367,8 @@ TRANSLATIONS: Dict[str, Dict[str, str]] = {
         "gateway.offline": "OFFLINE",
         "gateway.no_response": "sem resposta",
         # Vocabulário do ciclo: o trabalho que este agendador faz muda com o
-        # gateway, e `render.py` interpola marcadores diferentes.
-        "cron.title": "Agendador de inspeção",
+        # gateway, e o texto acompanha.
+        "cron.title": "Agendador",
         "cron.run_now": "Executar agora",
         "cron.active": "Ativo · a cada {interval}s",
         "cron.disabled": "Desativado (CRON_ENABLED=0)",
@@ -380,8 +380,8 @@ TRANSLATIONS: Dict[str, Dict[str, str]] = {
         "cron.last_result": "Último resultado",
         "cron.no_runs": "Nenhum ciclo executado ainda",
         # Vocabulário do ciclo: o trabalho que este agendador faz muda com o
-        # gateway, e `render.py` interpola marcadores diferentes.
-        "cron.result_line": "{inspected} inspecionados · {findings} achados ({duration}ms)",
+        # gateway, e o texto acompanha.
+        "cron.result_line": "{inspected} · ({duration}ms)",
         "cron.unavailable": "O agendador não está disponível nesta instância.",
         "cron.failed": "O ciclo não pôde ser concluído: {error}",
         "connections.title": "Conexões monitoradas",
@@ -662,8 +662,8 @@ TRANSLATIONS: Dict[str, Dict[str, str]] = {
         "gateway.offline": "DESCONECTADO",
         "gateway.no_response": "sin respuesta",
         # Vocabulário do ciclo: o trabalho que este agendador faz muda com o
-        # gateway, e `render.py` interpola marcadores diferentes.
-        "cron.title": "Programador de inspección",
+        # gateway, e o texto acompanha.
+        "cron.title": "Programador",
         "cron.run_now": "Ejecutar ahora",
         "cron.active": "Activo · cada {interval}s",
         "cron.disabled": "Desactivado (CRON_ENABLED=0)",
@@ -675,8 +675,8 @@ TRANSLATIONS: Dict[str, Dict[str, str]] = {
         "cron.last_result": "Último resultado",
         "cron.no_runs": "Aún no se ejecutó ningún ciclo",
         # Vocabulário do ciclo: o trabalho que este agendador faz muda com o
-        # gateway, e `render.py` interpola marcadores diferentes.
-        "cron.result_line": "{inspected} inspeccionados · {findings} hallazgos ({duration}ms)",
+        # gateway, e o texto acompanha.
+        "cron.result_line": "{inspected} · ({duration}ms)",
         "cron.unavailable": "El programador no está disponible en esta instancia.",
         "cron.failed": "No se pudo completar el ciclo: {error}",
         "connections.title": "Conexiones monitoreadas",
@@ -927,7 +927,14 @@ def normalize_language(code: str) -> str:
 def translate(key: str, lang: str = DEFAULT_LANGUAGE, **params) -> str:
     """Traduz uma chave, com fallback para inglês e interpolação opcional."""
     lang = normalize_language(lang)
-    text = TRANSLATIONS.get(lang, {}).get(key)
+    # O rótulo do produto vem primeiro: são as poucas chaves que dependem do que
+    # ESTE gateway faz, e elas moram em identidade.py justamente para que o
+    # catálogo abaixo possa ser o mesmo texto nos três irmãos.
+    text = ROTULOS_DO_PRODUTO.get(lang, {}).get(key)
+    if text is None:
+        text = TRANSLATIONS.get(lang, {}).get(key)
+    if text is None:
+        text = ROTULOS_DO_PRODUTO.get(DEFAULT_LANGUAGE, {}).get(key)
     if text is None:
         text = TRANSLATIONS[DEFAULT_LANGUAGE].get(key, key)
     if params:

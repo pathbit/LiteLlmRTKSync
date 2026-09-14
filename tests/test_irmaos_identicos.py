@@ -46,6 +46,7 @@ IRMAOS = ("9RTKSync", "OminiRTkSync", "LiteLlmRTKSync")
 IDENTICOS = (
     "auth.py",
     "credential_check.py",
+    "i18n.py",
     "logs.py",
     "paginacao.py",
     "prefs.py",
@@ -79,9 +80,8 @@ IDENTICOS = (
 # propósito: um teto com margem é permissão para piorar um pouco, e "um pouco"
 # foi como se chegou a mil linhas de diferença.
 TETOS_DE_DIVERGENCIA = {
-    "i18n.py": 12,
-    "models.py": 680,
-    "render.py": 1633,
+    "models.py": 7,
+    "render.py": 870,
     "sso.py": 1354,
     "web.py": 1954,
 }

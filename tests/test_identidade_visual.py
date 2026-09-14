@@ -47,6 +47,11 @@ CONTRATO_DE_IDENTIDADE = frozenset(
         "PALETA",
         "NOME_DO_COOKIE",
         "NOME_DO_COOKIE_DE_ESTADO",
+        # As poucas chaves de tradução que dependem do que este gateway faz: o
+        # 9Router e o OmniRoute renovam credencial OAuth, o LiteLLM só
+        # inspeciona. Ficam aqui para que o catálogo de i18n.py possa ser o
+        # MESMO TEXTO nos três -- e é: os três arquivos têm o mesmo md5.
+        "ROTULOS_DO_PRODUTO",
     }
 )
 
