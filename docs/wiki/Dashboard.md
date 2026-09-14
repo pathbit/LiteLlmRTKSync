@@ -53,8 +53,11 @@ base and where its credential comes from. Same pattern as the siblings, for the 
 a limit or an address squeezed into a cell pushed the readable columns off the screen. What is
 absent reads *not declared*, never "unlimited", and the key itself never appears.
 
-**Limit findings.** Each one names the field, both values and the consequence. See
-[Rate Limit Coherence](Rate-Limit-Coherence).
+**Limit coherence is not on this screen.** The check still exists and still names the field,
+both values and the consequence — but it runs from the command line (`--status`), not from a
+card here. The panel shows the same six cards as the siblings, and one product having a
+seventh was the asymmetry we set out to remove. See
+[Rate Limit Coherence](Rate-Limit-Coherence) for the rule and how to read it.
 
 **Proxy liveness.** A card against `/health/liveliness`, so "the panel is up" and "the proxy is
 up" are never confused for each other.
