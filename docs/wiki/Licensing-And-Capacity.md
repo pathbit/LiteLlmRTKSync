@@ -54,7 +54,7 @@ day's.
 
 **That table is Anthropic's, and LiteLLM is multi-provider on purpose** — every
 entry in `/model/info` carries its own `provider`
-`[FONTE: src/litellm_rtksync/models.py:164]`. For each other provider in your
+`[FONTE: src/litellm_rtksync/models.py:638]`. For each other provider in your
 catalogue the top of the chain is *that* provider's published rate-limit page,
 `[A VERIFICAR: read it and cite URL + date, the way this page cites Anthropic's]`.
 Do not assume symmetry between vendors; only Anthropic's was read here.
@@ -276,18 +276,18 @@ by field, with the names as the code writes them:
 
 | Question | Field | Where it is read | Panel label |
 | :--- | :--- | :--- | :--- |
-| What did this key promise per minute? | `rpmLimit`, `tpmLimit` | `models.py:129-130` | *RPM limit*, *TPM limit* (`i18n.py:113-114`) |
-| What is its ceiling in money? | `maxBudget` | `models.py:83-90` | *Budget ceiling* (`i18n.py:115`) |
-| How much has it burned? | `spend` | `models.py:76-81` | *Spend* (`i18n.py:110`) |
-| Did it hit the ceiling? | `healthStatus` = `over_budget` | `models.py:92-95` | *Budget exhausted* (`i18n.py:100`) |
-| How many keys hit it? | `summarize` | `models.py:203-210` | header counter, `/api/status` |
+| What did this key promise per minute? | `rpmLimit`, `tpmLimit` | `models.py:578-579` | *RPM limit*, *TPM limit* (`i18n.py:113-114`) |
+| What is its ceiling in money? | `maxBudget` | `models.py:490-497` | *Budget ceiling* (`i18n.py:115`) |
+| How much has it burned? | `spend` | `models.py:482-487` | *Spend* (`i18n.py:110`) |
+| Did it hit the ceiling? | `healthStatus` = `over_budget` | `models.py:500-502` | *Budget exhausted* (`i18n.py:100`) |
+| How many keys hit it? | `summarize` | `models.py:771-784` | header counter, `/api/status` |
 | Is the declared chain coherent? | `capValue`, `capLevel`, `severity` | `gateway.py:285-287` | *Limit findings* |
 
 Four readings that are easy to get wrong:
 
 **`over_budget` is the saturation signal, and it is a fact, not a forecast.** It
-fires when `spend >= max_budget` `[FONTE: src/litellm_rtksync/models.py:92-95]`,
-constant `SAUDE_ESTOURADA` `[FONTE: src/litellm_rtksync/models.py:12]`, badge
+fires when `spend >= max_budget` `[FONTE: src/litellm_rtksync/models.py:499-502]`,
+constant `HEALTH_OVER_BUDGET` `[FONTE: src/litellm_rtksync/models.py:40]`, badge
 rendered from `render.py:44`. A key that reaches it every budget period is
 under-sized; a key that never comes close is slack you can hand to someone else.
 That count, per key per period, is the only evidence that closes the loop — the
@@ -331,8 +331,8 @@ declaring is what you do after measuring.
 
 | | Key validity | Capacity |
 | :--- | :--- | :--- |
-| Field | `expiresAt`, `remainingSeconds` (`models.py:122-123`) | `max_budget`, `rpm_limit`, `tpm_limit` |
-| State | `expiring_soon`, `expired` (`models.py:9-10`) | `over_budget` (`models.py:12`) |
+| Field | `expiresAt`, `remainingSeconds` (`models.py:567-572`) | `max_budget`, `rpm_limit`, `tpm_limit` |
+| State | `expiring_soon`, `expired` (`models.py:36-37`) | `over_budget` (`models.py:40`) |
 | Symptom | the request is refused as unauthenticated | 429, or spend frozen at the ceiling |
 | Fix | reissue the key | wait for the budget period, or raise the ceiling |
 | Scales with team size? | **No** | **Yes** |
@@ -450,7 +450,7 @@ salto brusco de uso aciona **acceleration limits** (429). O tier escolhido abaix
 
 **Essa tabela é da Anthropic, e o LiteLLM é multi-provedor de propósito** — cada
 entrada de `/model/info` carrega o seu `provider`
-`[FONTE: src/litellm_rtksync/models.py:164]`. Para cada outro provedor do seu
+`[FONTE: src/litellm_rtksync/models.py:638]`. Para cada outro provedor do seu
 catálogo, o topo da cadeia é a página de rate limits *daquele* provedor,
 `[A VERIFICAR: leia e cite URL + data, como esta página cita a da Anthropic]`. Não
 presuma simetria entre fornecedores: aqui só a Anthropic foi lida.
@@ -670,18 +670,18 @@ campo, com o nome que o código escreve:
 
 | Pergunta | Campo | Onde é lido | Rótulo no painel |
 | :--- | :--- | :--- | :--- |
-| O que a chave prometeu por minuto? | `rpmLimit`, `tpmLimit` | `models.py:129-130` | *Limite RPM*, *Limite TPM* (`i18n.py:253-254`) |
-| Qual o teto em dinheiro? | `maxBudget` | `models.py:83-90` | *Teto de orçamento* (`i18n.py:255`) |
-| Quanto já queimou? | `spend` | `models.py:76-81` | *Gasto* (`i18n.py:250`) |
-| Bateu no teto? | `healthStatus` = `over_budget` | `models.py:92-95` | *Orçamento esgotado* (`i18n.py:240`) |
-| Quantas chaves bateram? | `summarize` | `models.py:203-210` | contador do cabeçalho, `/api/status` |
+| O que a chave prometeu por minuto? | `rpmLimit`, `tpmLimit` | `models.py:578-579` | *Limite RPM*, *Limite TPM* (`i18n.py:253-254`) |
+| Qual o teto em dinheiro? | `maxBudget` | `models.py:490-497` | *Teto de orçamento* (`i18n.py:255`) |
+| Quanto já queimou? | `spend` | `models.py:482-487` | *Gasto* (`i18n.py:250`) |
+| Bateu no teto? | `healthStatus` = `over_budget` | `models.py:500-502` | *Orçamento esgotado* (`i18n.py:240`) |
+| Quantas chaves bateram? | `summarize` | `models.py:771-784` | contador do cabeçalho, `/api/status` |
 | A cadeia declarada é coerente? | `capValue`, `capLevel`, `severity` | `gateway.py:285-287` | *Incoerências de limite* |
 
 Quatro leituras fáceis de errar:
 
 **`over_budget` é o sinal de saturação, e é fato, não previsão.** Dispara quando
-`spend >= max_budget` `[FONTE: src/litellm_rtksync/models.py:92-95]`, constante
-`SAUDE_ESTOURADA` `[FONTE: src/litellm_rtksync/models.py:12]`, selo montado em
+`spend >= max_budget` `[FONTE: src/litellm_rtksync/models.py:499-502]`, constante
+`HEALTH_OVER_BUDGET` `[FONTE: src/litellm_rtksync/models.py:40]`, selo montado em
 `render.py:44`. Chave que chega lá todo período está subdimensionada; chave que
 nunca chega perto é folga que dá para passar para outra pessoa. Essa contagem, por
 chave e por período, é a única evidência que fecha o laço — o resto é projeção.
@@ -725,8 +725,8 @@ faz depois de medir.
 
 | | Validade da chave | Capacidade |
 | :--- | :--- | :--- |
-| Campo | `expiresAt`, `remainingSeconds` (`models.py:122-123`) | `max_budget`, `rpm_limit`, `tpm_limit` |
-| Estado | `expiring_soon`, `expired` (`models.py:9-10`) | `over_budget` (`models.py:12`) |
+| Campo | `expiresAt`, `remainingSeconds` (`models.py:567-572`) | `max_budget`, `rpm_limit`, `tpm_limit` |
+| Estado | `expiring_soon`, `expired` (`models.py:36-37`) | `over_budget` (`models.py:40`) |
 | Sintoma | requisição recusada por autenticação | 429, ou gasto congelado no teto |
 | Solução | reemitir a chave | esperar o período, ou subir o teto |
 | Escala com o time? | **Não** | **Sim** |

@@ -79,11 +79,23 @@ IDENTICOS = (
 # Medidos em 13/09/2026, no par que mais diverge de cada módulo. Sem folga de
 # propósito: um teto com margem é permissão para piorar um pouco, e "um pouco"
 # foi como se chegou a mil linhas de diferença.
+# O teto de `web.py` subiu de 759 para 765 numa unica ocasiao, e a razao fica
+# registrada aqui porque a catraca existe justamente para exigir isso: seis
+# linhas entraram no LiteLlmRTKSync para corrigir uma tela que MENTIA. Com o
+# gateway fora do ar, `list_models()` levantava, o `except` devolvia lista vazia
+# e o painel dizia "o gateway respondeu com o catalogo vazio" -- o operador ia
+# procurar um cadastro faltando em vez de olhar o gateway.
+#
+# Nos irmaos o estado do catalogo nasce em `gateway.py` e chega pronto ao
+# `web.py` em duas linhas; no LiteLlmRTKSync a leitura acontece no proprio
+# `web.py`, entao sao quatro. A convergencia completa desse ponto e mover a
+# leitura para `gateway.py`, e isso continua em aberto.
 TETOS_DE_DIVERGENCIA = {
+    "i18n.py": 0,
     "models.py": 7,
-    "render.py": 870,
-    "sso.py": 1354,
-    "web.py": 1954,
+    "render.py": 862,
+    "sso.py": 328,
+    "web.py": 765,
 }
 
 # O que cada produto troca de propósito, e que não conta como divergência.

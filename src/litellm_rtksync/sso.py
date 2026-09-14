@@ -37,6 +37,7 @@ import base64
 import hashlib
 import hmac
 import json
+import logging
 import os
 import re
 import secrets
@@ -49,6 +50,11 @@ import zlib
 from dataclasses import dataclass
 from datetime import datetime, timezone
 from typing import Dict, Optional, Tuple
+
+# A descoberta é o único passo do fluxo que fala com o provedor sem ninguém
+# esperando na frente da tela: quando ela falha, o botão some do login e o
+# motivo não chega a lugar nenhum se não for registrado aqui.
+_log = logging.getLogger(__name__)
 
 # -- chaves de configuração --------------------------------------------------
 #
@@ -103,8 +109,13 @@ ROTA_SAML_METADATA = "/sso/saml/metadata"
 # o fluxo, e o sintoma parece "SSO quebrado" em vez de "relógio errado".
 TOLERANCIA_DE_RELOGIO = 300
 
-# Descoberta: uma leitura por hora, por processo.
+# Descoberta: uma leitura por hora, por processo. A FALHA também é guardada,
+# por um minuto: a tela de login pergunta ao emissor para saber se desenha o
+# botão, e sem esse negativo curto cada carregamento da tela com o provedor
+# fora do ar pagaria o tempo de espera inteiro -- a página que tem de
+# continuar de pé quando o provedor cai seria a primeira a parar.
 VALIDADE_DA_DESCOBERTA = 3600
+VALIDADE_DA_FALHA_DE_DESCOBERTA = 60
 
 # Conjunto de pendentes do SAML: dez minutos e teto duro. `/sso/saml/iniciar` é
 # pública, e estado de servidor criado por rota pública sem teto é consumo de
@@ -113,7 +124,7 @@ VALIDADE_DO_PENDENTE = 600
 LIMITE_DE_PENDENTES = 500
 
 _trava = threading.Lock()
-_descobertas: Dict[str, Tuple[float, dict]] = {}
+_descobertas: Dict[str, Tuple[float, Optional[dict]]] = {}
 _pendentes: Dict[str, float] = {}
 _assercoes_consumidas: Dict[str, float] = {}
 
@@ -124,7 +135,15 @@ class FalhaDeSSO(Exception):
     O motivo fica AQUI, para o log interno. A tela recebe sempre a mesma
     mensagem genérica: distinguir "state trocado" de "e-mail fora da lista"
     conta ao atacante em que ponto do fluxo ele parou.
+
+    O motivo também fica em `detalhe`, e não só no texto da exceção: quem
+    escreve no log pede `erro.detalhe` sem depender de `str(erro)`, que muda de
+    forma no dia em que alguém acrescentar um argumento à exceção.
     """
+
+    def __init__(self, detalhe: str):
+        super().__init__(detalhe)
+        self.detalhe = detalhe
 
 
 # ---------------------------------------------------------------------------
@@ -140,7 +159,7 @@ def desligado_por_ambiente() -> bool:
     usá-lo aqui desligaria o SSO em toda instalação.
     """
     return os.environ.get("SSO_DISABLED", "0").strip().lower() in (
-        "1", "true", "yes", "on",
+        "1", "true", "yes", "on", "sim",
     )
 
 
@@ -148,8 +167,15 @@ def segredo_do_ambiente() -> str:
     return os.environ.get("OIDC_CLIENT_SECRET", "").strip()
 
 
-def ler_segredo(caminho: str) -> Tuple[str, bool]:
-    """Devolve (segredo, veio_do_ambiente). Ambiente primeiro, depois o arquivo."""
+def _le_segredo(caminho: str) -> Tuple[str, bool]:
+    """Devolve (segredo, veio_do_ambiente). Ambiente primeiro, depois o arquivo.
+
+    É esta função, e nunca o nome público abaixo, que o resto do módulo chama.
+    No fim do arquivo cada painel liga as suas rotas ao módulo, e lá
+    `ler_segredo` pode ter outra assinatura -- a de quem ainda passa o
+    DIRETÓRIO em vez do caminho. Chamar daqui o nome público faria o núcleo
+    enxergar a versão de quem ligou por último.
+    """
     do_ambiente = segredo_do_ambiente()
     if do_ambiente:
         return do_ambiente, True
@@ -162,6 +188,11 @@ def ler_segredo(caminho: str) -> Tuple[str, bool]:
             # formulário local continua de pé.
             return "", False
     return "", False
+
+
+def ler_segredo(caminho: str) -> Tuple[str, bool]:
+    """O mesmo que `_le_segredo`. É este o nome que as rotas chamam."""
+    return _le_segredo(caminho)
 
 
 def grava_segredo(caminho: str, valor: str) -> bool:
@@ -194,9 +225,15 @@ def apaga_segredo(caminho: str) -> None:
 # ---------------------------------------------------------------------------
 
 def lista_de(valor: str) -> Tuple[str, ...]:
-    """Divide uma lista separada por vírgula, em minúsculas e sem vazios."""
+    """Divide uma lista separada por vírgula, em minúsculas e sem vazios.
+
+    O `@` da frente cai: quem cadastra um domínio costuma escrever
+    `@empresa.com`, e uma entrada que nunca casa é pior que um erro -- ela liga
+    o SSO com uma lista que não autoriza ninguém e não diz por quê.
+    """
     return tuple(
-        parte.strip().lower() for parte in (valor or "").split(",") if parte.strip()
+        parte.strip().lower().lstrip("@") for parte in (valor or "").split(",")
+        if parte.strip()
     )
 
 
@@ -280,7 +317,7 @@ def carregar(prefs_path: str, caminho_do_segredo: str) -> ConfiguracaoSSO:
     def ler(chave: str, padrao: str = "") -> str:
         return (get_preference(prefs_path, chave, padrao) or "").strip()
 
-    segredo, do_ambiente = ler_segredo(caminho_do_segredo)
+    segredo, do_ambiente = _le_segredo(caminho_do_segredo)
     return ConfiguracaoSSO(
         provedor=ler(CHAVE_PROVEDOR).lower(),
         base_url=ler(CHAVE_BASE_URL),
@@ -364,28 +401,51 @@ def _pedir(url: str, dados: Optional[bytes] = None,
 
 
 def descobrir(issuer: str, agora: Optional[float] = None) -> dict:
-    """Documento de descoberta do issuer, com cache de uma hora por processo."""
+    """Documento de descoberta do issuer, com cache de uma hora por processo.
+
+    Levanta FalhaDeSSO por qualquer motivo -- inclusive por um que acabou de
+    acontecer: a falha fica memorizada por um minuto, e dentro dessa janela a
+    resposta sai daqui sem pôr um byte na rede.
+    """
     issuer = (issuer or "").rstrip("/")
     if not issuer:
         raise FalhaDeSSO("issuer não configurado")
+    if not _transporte_seguro(issuer):
+        raise FalhaDeSSO("issuer sem TLS fora do loopback")
     agora = agora if agora is not None else time.time()
     with _trava:
         guardado = _descobertas.get(issuer)
         if guardado and guardado[0] > agora:
+            if guardado[1] is None:
+                raise FalhaDeSSO("a descoberta falhou há pouco e ainda está memorizada")
             return guardado[1]
 
-    documento = _pedir(
-        issuer + "/.well-known/openid-configuration", timeout=TIMEOUT_DESCOBERTA
-    )
+    try:
+        documento = _pedir(
+            issuer + "/.well-known/openid-configuration", timeout=TIMEOUT_DESCOBERTA
+        )
 
-    # Defesa contra mix-up: o documento tem de se declarar do MESMO issuer que
-    # está configurado aqui. Sem esta conferência, um provedor hostil que
-    # responda pelo endereço configurado pode se apresentar como outro.
-    if str(documento.get("issuer", "")).rstrip("/") != issuer:
-        raise FalhaDeSSO("o documento de descoberta declara outro issuer")
-    for campo in ("authorization_endpoint", "token_endpoint", "userinfo_endpoint"):
-        if not documento.get(campo):
-            raise FalhaDeSSO(f"o documento de descoberta não traz {campo}")
+        # Defesa contra mix-up: o documento tem de se declarar do MESMO issuer
+        # que está configurado aqui. Sem esta conferência, um provedor hostil
+        # que responda pelo endereço configurado pode se apresentar como outro.
+        if str(documento.get("issuer", "")).rstrip("/") != issuer:
+            raise FalhaDeSSO("o documento de descoberta declara outro issuer")
+        for campo in ("authorization_endpoint", "token_endpoint", "userinfo_endpoint"):
+            alvo = str(documento.get(campo) or "")
+            if not alvo:
+                raise FalhaDeSSO(f"o documento de descoberta não traz {campo}")
+            # O endereço é recusado AQUI, e não só na hora de usá-lo: um
+            # documento que aponta o token_endpoint para `http://` não vale nada
+            # inteiro, e guardá-lo seria repetir a recusa a cada passo.
+            if not _transporte_seguro(alvo):
+                raise FalhaDeSSO(f"{campo} do documento de descoberta está sem TLS")
+    except Exception as erro:
+        _log.warning("SSO: a descoberta do emissor falhou (%s)", erro)
+        with _trava:
+            _descobertas[issuer] = (agora + VALIDADE_DA_FALHA_DE_DESCOBERTA, None)
+        if isinstance(erro, FalhaDeSSO):
+            raise
+        raise FalhaDeSSO(f"descoberta falhou: {type(erro).__name__}") from erro
 
     with _trava:
         _descobertas[issuer] = (agora + VALIDADE_DA_DESCOBERTA, documento)
@@ -422,23 +482,36 @@ def desafio_de(verificador: str) -> str:
     return base64.urlsafe_b64encode(resumo).decode("ascii").rstrip("=")
 
 
-def url_de_autorizacao(documento: dict, config: ConfiguracaoSSO,
-                       state: str, nonce: str, verificador: str) -> str:
-    """Endereço para onde o navegador é enviado, já com PKCE."""
-    parametros = {
+def parametros_de_autorizacao(config: ConfiguracaoSSO, state: str, nonce: str,
+                              desafio: str) -> Dict[str, str]:
+    """Os campos da ida, separados de como eles viram endereço.
+
+    Quem já calculou o desafio PKCE monta a URL com estes campos sem refazer a
+    conta, e a lista de campos continua existindo num lugar só.
+    """
+    return {
         "response_type": "code",
         "client_id": config.client_id,
         "redirect_uri": config.url_de_retorno(),
         "scope": config.escopos or ESCOPOS_PADRAO,
         "state": state,
         "nonce": nonce,
-        "code_challenge": desafio_de(verificador),
+        "code_challenge": desafio,
         "code_challenge_method": "S256",
+        # Escolher a conta explicitamente: sem isto, quem já está logado no
+        # provedor com OUTRA conta entra com ela sem ver qual é.
         "prompt": "select_account",
     }
+
+
+def url_de_autorizacao(documento: dict, config: ConfiguracaoSSO,
+                       state: str, nonce: str, verificador: str) -> str:
+    """Endereço para onde o navegador é enviado, já com PKCE."""
     destino = str(documento.get("authorization_endpoint") or "")
     juncao = "&" if "?" in destino else "?"
-    return destino + juncao + urllib.parse.urlencode(parametros)
+    return destino + juncao + urllib.parse.urlencode(
+        parametros_de_autorizacao(config, state, nonce, desafio_de(verificador))
+    )
 
 
 def troca_o_code(documento: dict, config: ConfiguracaoSSO, segredo: str,

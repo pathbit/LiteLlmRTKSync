@@ -414,7 +414,8 @@ class TestRotuloDoTime(unittest.TestCase):
             "settings": None,
             "cron_scheduler": None,
             "run_cycle": lambda self: {"details": []},
-            "probe_proxy": lambda self: (True, 1),
+            "gateway_url": lambda self: "http://gateway.invalido:4000",
+            "probe_gateway": lambda self: True,
         })()
         anterior = DashboardHandler.last_cycle
         DashboardHandler.last_cycle = {"details": []}
