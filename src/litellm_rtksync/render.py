@@ -37,7 +37,7 @@ from .identidade import (
     NOME_DO_PRODUTO,
     PALETA,
 )
-from .paginacao import recortar, render_paginacao
+from .paginacao import POR_PAGINA, recortar, render_paginacao
 
 # Icone da aba, embutido como data URI: /favicon.ico responde 401 atras do
 # Basic Auth, entao um arquivo servido deixaria a aba sem icone ate o
@@ -1093,7 +1093,30 @@ def render_cron_history(history: List[Dict[str, Any]], lang: str) -> str:
             </div>
           </div>""")
 
-    return f'<div class="accordion accordion-flush" id="historicoCron">{"".join(items)}</div>'
+    # Cada ciclo carrega o indice da sua pagina: o script mostra uma de cada
+    # vez sem tocar no servidor. Dez por pagina, como em todo grid do painel.
+    por_pagina = POR_PAGINA
+    total = len(items)
+    ultima = max(1, (total + por_pagina - 1) // por_pagina)
+    blocos = []
+    for i, item in enumerate(items):
+        blocos.append(f'<div class="ciclo-do-historico" data-pagina="{i // por_pagina + 1}">{item}</div>')
+
+    if ultima == 1:
+        return f'''<div class="accordion accordion-flush" id="historicoCron">{"".join(blocos)}</div>'''
+
+    botoes = "".join(
+        f'''<li class="page-item{" active" if n == 1 else ""}">
+             <button class="page-link pagina-do-historico" type="button" data-ir-para="{n}">{n}</button>
+           </li>'''
+        for n in range(1, ultima + 1)
+    )
+    return f'''<div class="accordion accordion-flush" id="historicoCron">{"".join(blocos)}</div>
+      <nav class="d-flex justify-content-between align-items-center pt-3" aria-label="{esc(translate("pagination.label", lang))}">
+        <span class="text-secondary small" id="historicoContagem"
+              data-total="{total}" data-por-pagina="{por_pagina}"></span>
+        <ul class="pagination pagination-sm mb-0">{botoes}</ul>
+      </nav>'''
 
 
 def linha_do_ciclo(resultado: Dict[str, Any], lang: str) -> str:
@@ -1800,6 +1823,32 @@ def render_dashboard(
   <script>
     // A página é renderizada no servidor; o jQuery só cuida de conforto de uso.
     jQuery(function ($) {{
+      // Paginacao do historico do agendador, de dez em dez. Ela e feita AQUI, e
+      // nao no servidor como nos quatro grids da pagina, por uma razao simples:
+      // este conteudo vive dentro de um modal, e virar pagina pelo servidor
+      // recarregaria o documento -- o que FECHA o modal. O operador clicaria em
+      // "proxima" e a janela sumiria.
+      var $ciclos = $('.ciclo-do-historico');
+      if ($ciclos.length) {{
+        var $contagem = $('#historicoContagem');
+        var porPagina = parseInt($contagem.data('por-pagina'), 10) || 10;
+        var total = parseInt($contagem.data('total'), 10) || $ciclos.length;
+        var mostrarPagina = function (n) {{
+          $ciclos.hide().filter('[data-pagina="' + n + '"]').show();
+          $('.pagina-do-historico').closest('.page-item').removeClass('active');
+          $('.pagina-do-historico[data-ir-para="' + n + '"]').closest('.page-item').addClass('active');
+          var inicio = (n - 1) * porPagina + 1;
+          var fim = Math.min(n * porPagina, total);
+          // O total e o TOTAL, e nao o tamanho da pagina: e o que responde
+          // "quantos ciclos existem" sem obrigar a contar linha na tela.
+          $contagem.text(inicio + '-' + fim + ' / ' + total);
+        }};
+        $('.pagina-do-historico').on('click', function () {{
+          mostrarPagina(parseInt($(this).data('ir-para'), 10));
+        }});
+        mostrarPagina(1);
+      }}
+
       $('form[action^="/acoes/"]').not('[action="/acoes/idioma"]').on('submit', function () {{
         $(this).find('button[type=submit]')
                .prop('disabled', true)
