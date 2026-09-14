@@ -95,7 +95,7 @@ TETOS_DE_DIVERGENCIA = {
     "models.py": 7,
     "render.py": 862,
     "sso.py": 328,
-    "web.py": 765,
+    "web.py": 689,
 }
 
 # O que cada produto troca de propósito, e que não conta como divergência.
