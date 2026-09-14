@@ -239,7 +239,7 @@ TRANSLATIONS: Dict[str, Dict[str, str]] = {
                              "to be FIXED: a quick tunnel changes address on every start and "
                              "every return address registered at the provider stops matching, so "
                              "single sign-on needs a named tunnel or Tailscale.",
-        "sso.base_url_help": "Exact public origin, no trailing slash. It must be stable: a Cloudflare quick tunnel gets a new address on every start and every registered return URL stops matching. Use a named tunnel or Tailscale.",
+        "sso.base_url_help": "Exact public origin, no trailing slash. The return address is built from this value and never from the request headers.",
         "sso.redirect_uri": "Return address to register with the provider",
         "sso.callback_url": "Redirect URI to register at the provider",
         "sso.callback_help": "Copy this exact string into the provider. A single character of "
@@ -534,7 +534,7 @@ TRANSLATIONS: Dict[str, Dict[str, str]] = {
                              "FIXA: um túnel rápido troca de endereço a cada subida e todo "
                              "endereço de retorno registrado no provedor deixa de bater, então o "
                              "acesso federado exige túnel nomeado ou Tailscale.",
-        "sso.base_url_help": "Origem pública exata, sem barra no fim. Precisa ser fixa: o túnel rápido da Cloudflare troca de endereço a cada subida e todo endereço de retorno registrado deixa de bater. Use túnel nomeado ou Tailscale.",
+        "sso.base_url_help": "Origem pública exata, sem barra no fim. O endereço de retorno nasce deste valor, e nunca dos cabeçalhos da requisição.",
         "sso.redirect_uri": "Endereço de retorno a registrar no provedor",
         "sso.callback_url": "Endereço de retorno a cadastrar no provedor",
         "sso.callback_help": "Copie exatamente esta linha para o provedor. Um caractere de "
@@ -830,7 +830,7 @@ TRANSLATIONS: Dict[str, Dict[str, str]] = {
                              "y toda dirección de retorno registrada en el proveedor deja de "
                              "coincidir, así que el acceso federado exige túnel con nombre o "
                              "Tailscale.",
-        "sso.base_url_help": "Origen público exacto, sin barra final. Tiene que ser fija: el túnel rápido de Cloudflare cambia de dirección en cada arranque y toda dirección de retorno registrada deja de coincidir. Use un túnel con nombre o Tailscale.",
+        "sso.base_url_help": "Origen público exacto, sin barra final. La dirección de retorno nace de este valor, y nunca de las cabeceras de la petición.",
         "sso.redirect_uri": "Dirección de retorno que se registra en el proveedor",
         "sso.callback_url": "Dirección de retorno a registrar en el proveedor",
         "sso.callback_help": "Copie exactamente esta línea en el proveedor. Un carácter de "
