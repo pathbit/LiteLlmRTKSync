@@ -21,7 +21,7 @@ import urllib.error
 import urllib.request
 
 from litellm_rtksync.config import Settings
-from litellm_rtksync.web import PainelHandler, start_web
+from litellm_rtksync.web import LiteLlmDashboardHandler, start_web
 
 PORTA = 19390
 BASE = f"http://127.0.0.1:{PORTA}"
@@ -86,7 +86,7 @@ class TestPainel(unittest.TestCase):
     def tearDownClass(cls):
         cls.servidor.shutdown()
         cls.servidor.server_close()
-        PainelHandler.ultimo_ciclo = {}
+        LiteLlmDashboardHandler.last_cycle = {}
         cls.tmp.cleanup()
 
     # -- auxiliares ---------------------------------------------------------
