@@ -131,3 +131,72 @@ variable; change them in the environment and restart*. Accepting it would be wor
 would appear to work and be lost at the next recreate.
 
 See [Authentication](Authentication).
+
+---
+
+## Reaching the gateway's own admin UI
+
+The LiteLLM proxy ships its own admin interface, and it is **not** this
+synchronizer's panel. Two different products, two different addresses, two
+different credentials — confusing them costs an afternoon:
+
+| | Address | Credential |
+| :--- | :--- | :--- |
+| This synchronizer's panel | `http://127.0.0.1:9093/` | `DASHBOARD_USER` / `DASHBOARD_PASSWORD` |
+| LiteLLM's own admin UI | `http://127.0.0.1:8083/ui/login/` | `admin` + the `LITELLM_MASTER_KEY` |
+
+**Use `/ui/login/`, with the trailing slash.** The older `/sso/key/generate`
+still answers, and still accepts the same credentials, but it now greets you
+with a red banner:
+
+> *Deprecated: Logging in with username and password on this page is deprecated.
+> Please use the new login page instead. This page will be dedicated to signing
+> in via SSO in the future.*
+
+Upstream is turning that path into an SSO-only entry point. The new page carries
+the same form plus a "Login with SSO" button, so it is where both paths live
+from now on.
+
+**A trap worth knowing about:** the admin UI keeps the virtual key it is using
+in the browser's own storage. Recreate the proxy's database — which is what
+`docker compose down -v` does — and that key stops existing, while the browser
+keeps sending it. Every call then answers:
+
+```
+{"error":{"message":"Authentication Error, Invalid proxy server token passed.
+ Received API Key = sk-...  Unable to find token in cache or
+ `LiteLLM_VerificationTokenTable`","type":"token_not_found_in_db","code":"401"}}
+```
+
+Nothing is broken: the browser is holding a credential that the database no
+longer knows. Clear the site data for that origin, or open the login page again,
+and it asks for the master key from scratch.
+
+---
+
+# Em português
+
+O proxy LiteLLM tem a interface administrativa dele, que **não** é o painel deste
+sincronizador. São dois produtos, dois endereços e duas credenciais:
+
+| | Endereço | Credencial |
+| :--- | :--- | :--- |
+| Painel deste sincronizador | `http://127.0.0.1:9093/` | `DASHBOARD_USER` / `DASHBOARD_PASSWORD` |
+| Interface do LiteLLM | `http://127.0.0.1:8083/ui/login/` | `admin` + a `LITELLM_MASTER_KEY` |
+
+**Use `/ui/login/`, com a barra no fim.** O caminho antigo,
+`/sso/key/generate`, ainda responde e ainda aceita as mesmas credenciais, mas
+agora abre com uma tarja vermelha avisando que entrar ali com usuário e senha
+está descontinuado — o upstream está transformando aquele endereço em entrada
+exclusiva de SSO. A página nova tem o mesmo formulário mais um botão "Login with
+SSO".
+
+**Uma armadilha que vale conhecer:** a interface administrativa guarda no
+armazenamento do navegador a chave virtual que está usando. Recrie o banco do
+proxy — que é o que `docker compose down -v` faz — e aquela chave deixa de
+existir, enquanto o navegador continua mandando-a. Toda chamada passa a
+responder `token_not_found_in_db` com HTTP 401.
+
+Não há nada quebrado: o navegador está segurando uma credencial que o banco não
+conhece mais. Limpe os dados do site daquela origem, ou abra a página de login
+de novo, e ela volta a pedir a master key do zero.
