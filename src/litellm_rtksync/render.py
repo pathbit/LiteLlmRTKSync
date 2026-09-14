@@ -327,31 +327,57 @@ def render_login_page(
         if erro
         else ""
     )
-    desafio_html = (
-        f'<input type="hidden" name="desafio" value="{esc(desafio)}">'
-        f'<input type="hidden" name="resposta" id="resposta" value="">'
-        f'<p class="text-secondary small d-flex align-items-center gap-2" id="aviso-desafio">'
-        f'<span class="spinner-border spinner-border-sm" role="status" aria-hidden="true"></span>'
-        f'{esc(translate("auth.challenge", lang))}</p>'
-        f'<script>'
-        f'(async () => {{'
-        f'  const desafio = {desafio!r};'
-        f'  const alvo = "0".repeat({dificuldade});'
-        f'  const cod = new TextEncoder();'
-        f'  for (let n = 0; n < 20000000; n++) {{'
-        f'    const buf = await crypto.subtle.digest("SHA-256", cod.encode(desafio + n));'
-        f'    const hex = [...new Uint8Array(buf)].map(b => b.toString(16).padStart(2, "0")).join("");'
-        f'    if (hex.startsWith(alvo)) {{'
-        f'      document.getElementById("resposta").value = String(n);'
-        f'      document.getElementById("aviso-desafio").remove();'
-        f'      break;'
-        f'    }}'
-        f'  }}'
-        f'}})();'
-        f'</script>'
-        if desafio
-        else ""
-    )
+    desafio_html = ""
+    if desafio:
+        from . import protecao
+
+        detalhes = protecao.detalhes_do_desafio(desafio)
+        if detalhes:
+            alvo_nome = translate(f"auth.item_{detalhes['alvo']}", lang)
+            instrucao = translate("auth.challenge_prompt", lang, item=alvo_nome)
+            botoes = []
+            for item in detalhes["opcoes"]:
+                icone = protecao.icone_do_item(item)
+                label = translate(f"auth.item_{item}", lang)
+                botoes.append(
+                    f'<button type="button" class="btn btn-outline-secondary btn-sm d-flex flex-column '
+                    f'align-items-center justify-content-center p-2 flex-grow-1 desafio-btn" '
+                    f'data-val="{esc(item)}" title="{esc(label)}" aria-label="{esc(label)}" style="min-width:44px">'
+                    f'<i class="bi {icone} fs-5 mb-1" aria-hidden="true"></i>'
+                    f'<span class="small" style="font-size:0.75rem">{esc(label)}</span>'
+                    f'</button>'
+                )
+            grade_botoes = "".join(botoes)
+            desafio_html = f"""
+        <div class="mb-3 p-3 rounded" style="background:var(--bg);border:1px solid var(--line)">
+          <label class="form-label small d-flex align-items-center gap-2 mb-2 text-warning fw-semibold">
+            <i class="bi bi-shield-check" aria-hidden="true"></i>
+            <span>{esc(instrucao)}</span>
+          </label>
+          <input type="hidden" name="desafio" value="{esc(desafio)}">
+          <input type="hidden" name="resposta" id="resposta" value="">
+          <div class="d-flex gap-2 justify-content-between my-1" role="group" aria-label="{esc(translate("auth.challenge", lang))}">
+            {grade_botoes}
+          </div>
+        </div>
+        <script>
+        document.querySelectorAll('.desafio-btn').forEach(btn => {{
+          btn.addEventListener('click', function() {{
+            document.querySelectorAll('.desafio-btn').forEach(b => {{
+              b.classList.remove('btn-primary', 'active');
+              b.classList.add('btn-outline-secondary');
+            }});
+            this.classList.remove('btn-outline-secondary');
+            this.classList.add('btn-primary', 'active');
+            document.getElementById('resposta').value = this.getAttribute('data-val');
+          }});
+        }});
+        </script>"""
+        else:
+            desafio_html = (
+                f'<input type="hidden" name="desafio" value="{esc(desafio)}">'
+                f'<input type="hidden" name="resposta" id="resposta" value="">'
+            )
     # O botao do SSO e um LINK, nunca um `<form>`: a CSP do painel declara
     # `form-action 'self'` e o navegador bloqueia, sem erro visivel na tela, a
     # submissao que redireciona para fora. Ele fica AO LADO do formulario local,

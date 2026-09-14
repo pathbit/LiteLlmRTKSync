@@ -70,13 +70,6 @@ class ProvaDeTrabalho(unittest.TestCase):
     def setUp(self):
         protecao.limpa_apos_sucesso("10.0.0.4")
 
-    def _resolve(self, desafio):
-        alvo = "0" * protecao.DIFICULDADE
-        for n in range(5_000_000):
-            if hashlib.sha256(f"{desafio}{n}".encode()).hexdigest().startswith(alvo):
-                return str(n)
-        self.fail("desafio sem solução em tempo razoável")
-
     def test_so_e_exigido_depois_de_algumas_falhas(self):
         self.assertFalse(protecao.precisa_de_desafio("10.0.0.4"))
         for _ in range(protecao.FALHAS_ATE_DESAFIO):
@@ -85,34 +78,37 @@ class ProvaDeTrabalho(unittest.TestCase):
 
     def test_resposta_correta_passa(self):
         desafio = protecao.novo_desafio()
-        self.assertTrue(protecao.resposta_confere(desafio, self._resolve(desafio)))
+        detalhes = protecao.detalhes_do_desafio(desafio)
+        self.assertIsNotNone(detalhes)
+        self.assertTrue(protecao.resposta_confere(desafio, detalhes["alvo"]))
 
     def test_resposta_errada_nao_passa(self):
         desafio = protecao.novo_desafio()
-        self.assertFalse(protecao.resposta_confere(desafio, "0"))
+        self.assertFalse(protecao.resposta_confere(desafio, "opcao_invalida_xyz"))
 
     def test_a_mesma_resposta_nao_serve_duas_vezes(self):
         """Sem consumo, um bot resolveria uma vez e repetiria para sempre."""
         desafio = protecao.novo_desafio()
-        resposta = self._resolve(desafio)
-        self.assertTrue(protecao.resposta_confere(desafio, resposta))
-        self.assertFalse(protecao.resposta_confere(desafio, resposta))
+        detalhes = protecao.detalhes_do_desafio(desafio)
+        self.assertTrue(protecao.resposta_confere(desafio, detalhes["alvo"]))
+        self.assertFalse(protecao.resposta_confere(desafio, detalhes["alvo"]))
 
     def test_desafio_inventado_nao_passa(self):
-        self.assertFalse(protecao.resposta_confere("desafio-que-nunca-emiti", "0"))
+        self.assertFalse(protecao.resposta_confere("desafio-que-nunca-emiti", "key"))
 
     def test_entrada_vazia_nao_derruba(self):
         for desafio, resposta in (("", ""), ("x", ""), ("", "y")):
             self.assertFalse(protecao.resposta_confere(desafio, resposta))
 
+    def test_detalhes_do_desafio_traz_opcoes_e_alvo_valido(self):
+        desafio = protecao.novo_desafio()
+        detalhes = protecao.detalhes_do_desafio(desafio)
+        self.assertEqual(len(detalhes["opcoes"]), protecao.DIFICULDADE)
+        self.assertIn(detalhes["alvo"], detalhes["opcoes"])
+
 
 class DificuldadeQueCresce(unittest.TestCase):
-    """Doze milissegundos não param um ataque distribuído por muitos endereços.
-
-    O teto por janela é por endereço, então quem tem mil máquinas nunca o
-    atinge. O que encarece esse ataque é a dificuldade subir com a insistência
-    de cada endereço -- sem cobrar nada de quem errou a senha uma vez.
-    """
+    """Mais falhas aumentam o número de opções para reduzir chance de acerto ao acaso."""
 
     def setUp(self):
         protecao.limpa_apos_sucesso("10.0.0.9")
@@ -130,27 +126,17 @@ class DificuldadeQueCresce(unittest.TestCase):
         )
 
     def test_a_dificuldade_tem_teto(self):
-        """Sem teto, o navegador de um humano distraído travaria."""
         for _ in range(200):
             protecao.anota_falha("10.0.0.9")
         self.assertLessEqual(
             protecao.dificuldade_para("10.0.0.9"), protecao.DIFICULDADE_MAXIMA
         )
 
-    def test_a_resposta_e_conferida_na_dificuldade_cobrada(self):
-        """Resolver o fácil e mandar onde se pede o difícil não pode passar."""
-        desafio = protecao.novo_desafio()
-        alvo_facil = "0" * 3
-        for n in range(200000):
-            if hashlib.sha256(f"{desafio}{n}".encode()).hexdigest().startswith(alvo_facil):
-                resposta_facil = str(n)
-                break
-        else:
-            self.skipTest("não achei solução fácil em tempo razoável")
-        resumo = hashlib.sha256(f"{desafio}{resposta_facil}".encode()).hexdigest()
-        if resumo.startswith("0" * 6):
-            self.skipTest("a solução fácil calhou de servir para a difícil")
-        self.assertFalse(protecao.resposta_confere(desafio, resposta_facil, 6))
+    def test_novo_desafio_respeita_quantidade(self):
+        desafio = protecao.novo_desafio(quantidade=6)
+        detalhes = protecao.detalhes_do_desafio(desafio)
+        self.assertEqual(len(detalhes["opcoes"]), 6)
+        self.assertIn(detalhes["alvo"], detalhes["opcoes"])
 
 
 class EnderecoDoCliente(unittest.TestCase):

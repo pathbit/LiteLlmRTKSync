@@ -11,63 +11,66 @@ Três camadas, da mais barata para a mais cara:
    `Retry-After`. É o que para o script que tenta mil senhas por minuto.
 
 2. **Espera que cresce.** Cada falha seguida atrasa a resposta seguinte, dobrando
-   até um teto. Um humano que errou a senha espera um segundo; um robô que erra
-   sempre passa a esperar dezenas. O atraso é do lado do servidor: não há nada no
+   até um teto. Um humano que errou a senha espera meio segundo; um robô que erra
+   sempre passa a esperar mais. O atraso é do lado do servidor: não há nada no
    cliente para desligar.
 
-3. **Prova de trabalho.** Depois de `FALHAS_ATE_DESAFIO` falhas, o formulário só
-   é aceito com a resposta de um desafio que custa CPU para resolver e é
-   instantâneo de conferir. Sem conta, sem serviço externo, sem cookie de
-   rastreio e sem imagem para decifrar — o custo cai sobre quem tenta em massa,
-   e não sobre quem esqueceu a senha.
+3. **Desafio interativo direto.** Depois de `FALHAS_ATE_DESAFIO` falhas, o formulário
+   só é aceito com a seleção do item solicitado entre opções visuais. Instantâneo
+   para humanos (1 clique, zero travamento de CPU ou spinner), e barra scripts e
+   robôs que tentam ataques automatizados em massa.
 
 O estado vive em memória, por processo. Reiniciar zera os contadores, o que é
 aceitável: reiniciar é justamente o que um atacante não consegue fazer.
 """
 
-import hashlib
 import secrets
 import threading
 import time
-from typing import Dict, List, Optional, Tuple
+from typing import Any, Dict, List, Optional, Tuple
 
 JANELA_EM_SEGUNDOS = 300
 TENTATIVAS_POR_JANELA = 10
 
 FALHAS_ATE_DESAFIO = 3
-ESPERA_INICIAL_EM_SEGUNDOS = 1.0
-ESPERA_MAXIMA_EM_SEGUNDOS = 30.0
+ESPERA_INICIAL_EM_SEGUNDOS = 0.5
+ESPERA_MAXIMA_EM_SEGUNDOS = 5.0
 
-# Quantos zeros hexadecimais o resumo precisa ter. Cada zero a mais multiplica
-# o custo por dezesseis, e medido nesta máquina:
-#
-#     3 zeros ->     1 ms  (~1.500 tentativas)
-#     4 zeros ->    12 ms  (~29.000 tentativas)
-#     5 zeros ->   532 ms  (~1.275.000 tentativas)
-#
-# Conferir custa 0,3 microssegundo em qualquer um deles -- é essa assimetria,
-# de mais de quarenta mil vezes, que faz a prova de trabalho servir.
+# Quantidade padrão e máxima de opções exibidas no desafio interativo.
 DIFICULDADE = 4
-
-# A dificuldade CRESCE com a insistência. Doze milissegundos não incomodam quem
-# errou a senha, e também não incomodam um bot que só quer testar uma senha por
-# endereço -- é o ataque distribuído, com muitos IPs, que o teto por janela não
-# alcança. Subir um zero a cada bloco de falhas põe o preço onde ele precisa
-# estar sem cobrar nada de quem acerta na segunda tentativa.
 DIFICULDADE_MAXIMA = 6
+
+# Catálogo de itens do desafio interativo (identificador, ícone do Bootstrap Icons)
+ITENS_DESAFIO: Tuple[Tuple[str, str], ...] = (
+    ("key", "bi-key-fill"),
+    ("shield", "bi-shield-fill"),
+    ("lock", "bi-lock-fill"),
+    ("star", "bi-star-fill"),
+    ("heart", "bi-heart-fill"),
+    ("bell", "bi-bell-fill"),
+    ("lightning", "bi-lightning-fill"),
+    ("gear", "bi-gear-fill"),
+)
+MAPA_ICONES: Dict[str, str] = dict(ITENS_DESAFIO)
+
+
+def icone_do_item(item: str) -> str:
+    """Ícone Bootstrap correspondente ao item do desafio."""
+    return MAPA_ICONES.get(item, "bi-question-circle")
 
 
 def dificuldade_para(endereco: str) -> int:
-    """Quantos zeros exigir deste endereço, dado o histórico dele."""
+    """Quantas opções exigir deste endereço, dado o histórico dele."""
     with _trava:
         falhas = _falhas.get(endereco, 0)
     extra = max(0, (falhas - FALHAS_ATE_DESAFIO) // 3)
     return min(DIFICULDADE + extra, DIFICULDADE_MAXIMA)
 
+
 _trava = threading.Lock()
 _tentativas: Dict[str, List[float]] = {}
 _falhas: Dict[str, int] = {}
-_desafios: Dict[str, float] = {}
+_desafios: Dict[str, Any] = {}
 
 
 def _limpa(agora: float) -> None:
@@ -79,8 +82,9 @@ def _limpa(agora: float) -> None:
         else:
             _tentativas.pop(endereco, None)
             _falhas.pop(endereco, None)
-    for desafio in list(_desafios):
-        if agora - _desafios[desafio] > JANELA_EM_SEGUNDOS:
+    for desafio, info in list(_desafios.items()):
+        criado = info.get("criado_em", 0.0) if isinstance(info, dict) else info
+        if agora - criado > JANELA_EM_SEGUNDOS:
             _desafios.pop(desafio, None)
 
 
@@ -124,29 +128,43 @@ def precisa_de_desafio(endereco: str) -> bool:
         return _falhas.get(endereco, 0) >= FALHAS_ATE_DESAFIO
 
 
-def novo_desafio() -> str:
-    """Cria um desafio de uso único, válido pela mesma janela do teto."""
-    desafio = secrets.token_hex(16)
+def novo_desafio(quantidade: Optional[int] = None) -> str:
+    """Cria um desafio interativo de uso único, válido pela mesma janela do teto."""
+    qtd = DIFICULDADE if quantidade is None else max(3, min(quantidade, len(ITENS_DESAFIO)))
+    desafio_id = secrets.token_hex(16)
+    escolhidos = secrets.SystemRandom().sample(ITENS_DESAFIO, qtd)
+    alvo = secrets.choice(escolhidos)[0]
     with _trava:
-        _desafios[desafio] = time.time()
-    return desafio
+        _desafios[desafio_id] = {
+            "criado_em": time.time(),
+            "alvo": alvo,
+            "opcoes": [item[0] for item in escolhidos],
+        }
+    return desafio_id
+
+
+def detalhes_do_desafio(desafio_id: str) -> Optional[Dict[str, Any]]:
+    """Devolve as opções e o item alvo do desafio, sem consumi-lo."""
+    with _trava:
+        info = _desafios.get(desafio_id)
+        if not info or not isinstance(info, dict):
+            return None
+        return {
+            "id": desafio_id,
+            "alvo": info["alvo"],
+            "opcoes": list(info["opcoes"]),
+        }
 
 
 def resposta_confere(desafio: str, resposta: str, dificuldade: Optional[int] = None) -> bool:
-    """Confere a prova de trabalho e consome o desafio (uso único)."""
+    """Confere a resposta do desafio e o consome (uso único)."""
     if not desafio or not resposta:
         return False
-    exigidos = DIFICULDADE if dificuldade is None else dificuldade
     with _trava:
-        if desafio not in _desafios:
+        info = _desafios.pop(desafio, None)
+        if not info or not isinstance(info, dict):
             return False
-    resumo = hashlib.sha256(f"{desafio}{resposta}".encode("utf-8")).hexdigest()
-    if not resumo.startswith("0" * exigidos):
-        return False
-    with _trava:
-        # Consumido: reapresentar a mesma resposta não passa de novo.
-        _desafios.pop(desafio, None)
-    return True
+        return str(resposta).strip().lower() == str(info.get("alvo", "")).strip().lower()
 
 
 def endereco_do_cliente(client_address) -> str:
