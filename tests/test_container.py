@@ -9,7 +9,6 @@ Garante que a imagem Docker gerada:
 """
 
 import os
-import sys
 import time
 import unittest
 import urllib.request
