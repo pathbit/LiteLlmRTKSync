@@ -36,5 +36,36 @@ jobs:
         run: |
           pip install --upgrade pip
           pip install .
-
           litellmrtksync --help
+
+  docker-validation:
+    name: Validate Docker Image Build & Testcontainers
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python 3.14
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.14"
+
+      - name: Create and activate virtual environment
+        run: |
+          python3 -m venv .venv
+          echo "$GITHUB_WORKSPACE/.venv/bin" >> $GITHUB_PATH
+
+      - name: Install package with test extras
+        run: |
+          pip install --upgrade pip
+          pip install ".[test]"
+
+      - name: Build Docker image (validate no build error)
+        run: |
+          docker build -t litellmrtksync:test .
+
+      - name: Validate container with Testcontainers
+        env:
+          TEST_DOCKER_IMAGE: litellmrtksync:test
+        run: |
+          PYTHONPATH=src python3 -m unittest tests/test_container.py -v
