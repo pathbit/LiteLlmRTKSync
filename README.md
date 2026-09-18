@@ -158,7 +158,7 @@ side of the mapping in the compose file — the right side is the internal port,
 the one the process listens on.
 
 
-Official multi-architecture Docker images (`linux/amd64` and `linux/arm64`) are published automatically to the GitHub Container Registry (GHCR):
+Official multi-architecture Docker images (`linux/amd64` and `linux/arm64`) are published automatically to the GitHub Container Registry (GHCR) on pushes to `master` with changes in `src/`. The registry enforces an automated retention policy keeping strictly the last 3 versions:
 
 ```bash
 docker pull ghcr.io/pathbit/litellmrtksync:latest
@@ -393,6 +393,18 @@ source .venv/bin/activate
 make test
 # Or directly
 PYTHONPATH=src python3 -m unittest discover -s tests -p "test_*.py"
+```
+
+### Option 3. Automated Docker Image Validation with Testcontainers
+
+Validates that the generated Docker image boots cleanly, exposes the web dashboard on port 9090, responds on `/login` (200 OK) and `/healthz`, and executes CLI commands:
+
+```bash
+# Install package with test dependencies
+pip install ".[test]"
+
+# Run Testcontainers validation suite
+python3 -m unittest tests/test_container.py -v
 ```
 
 ---
