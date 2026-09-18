@@ -6,6 +6,8 @@ on:
     paths:
       - "src/**"
       - "Dockerfile"
+      - "pyproject.toml"
+      - ".dockerignore"
     tags: ["v*.*.*"]
   workflow_dispatch:
 
@@ -106,3 +108,22 @@ jobs:
             docker pull ghcr.io/${{ github.repository }}:${{ github.ref_name }}
             docker pull ghcr.io/${{ github.repository }}:latest
             ```
+
+  prune-packages:
+    name: Prune Older Packages (Keep Last 3)
+    needs: build-and-push-docker
+    runs-on: ubuntu-latest
+    steps:
+      - name: Apply retention policy
+        uses: dataaxiom/ghcr-cleanup-action@v1.2.2
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+          owner: ${{ github.repository_owner }}
+          packages: litellmrtksync
+          keep-n-tagged: 3
+          exclude-tags: latest
+          delete-untagged: true
+          delete-ghost-images: true
+          delete-partial-images: true
+          delete-orphaned-images: true
+          validate: true
