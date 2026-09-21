@@ -100,22 +100,24 @@ def usuario_da_sessao(valor: str, agora: Optional[float] = None) -> Optional[str
     return usuario or None
 
 
-def cabecalho_para_gravar(valor: str) -> str:
+def cabecalho_para_gravar(valor: str, seguro: bool = False) -> str:
     """Cookie de sessão: inacessível ao script da página e presa a este site.
 
-    Sem `Secure` de propósito: o painel é servido em HTTP no loopback, e um
-    cookie `Secure` simplesmente não seria gravado ali.
+    Sem `Secure` por padrão para desenvolvimento em loopback HTTP; com
+    `seguro=True`, adiciona `; Secure` quando servido em HTTPS ou atrás de proxy.
     """
+    s = "; Secure" if seguro else ""
     return (
         f"{NOME_DO_COOKIE}={valor}; Path=/; HttpOnly; SameSite=Strict; "
-        f"Max-Age={VALIDADE_EM_SEGUNDOS}"
+        f"Max-Age={VALIDADE_EM_SEGUNDOS}{s}"
     )
 
 
-def cabecalho_para_apagar() -> str:
+def cabecalho_para_apagar(seguro: bool = False) -> str:
+    s = "; Secure" if seguro else ""
     return (
         f"{NOME_DO_COOKIE}=; Path=/; Expires=Thu, 01 Jan 1970 00:00:00 GMT; "
-        f"Max-Age=0; HttpOnly; SameSite=Strict"
+        f"Max-Age=0; HttpOnly; SameSite=Strict{s}"
     )
 
 
@@ -181,26 +183,27 @@ def ler_estado_sso(valor: str, agora: Optional[float] = None) -> Optional[dict]:
     return {"state": state, "nonce": nonce, "verificador": verificador}
 
 
-def cabecalho_para_gravar_estado(valor: str) -> str:
+def cabecalho_para_gravar_estado(valor: str, seguro: bool = False) -> str:
     """Cookie de estado do SSO: `Lax`, curto e restrito ao caminho do fluxo.
 
     NÃO pode ser `SameSite=Strict` como o de sessão: a volta do provedor é uma
     navegação vinda de outro site, e um cookie `Strict` simplesmente não é
     enviado nela — a falha apareceria como "login que não funciona", sem erro
-    nenhum na tela. Sem `Secure` pelo mesmo motivo do cookie de sessão: o painel
-    é servido em HTTP no loopback.
+    nenhum na tela. Sem `Secure` no loopback, mas com `; Secure` quando em HTTPS.
     """
+    s = "; Secure" if seguro else ""
     return (
         f"{NOME_DO_COOKIE_DE_ESTADO}={valor}; Path=/sso/; HttpOnly; SameSite=Lax; "
-        f"Max-Age={VALIDADE_DO_ESTADO_EM_SEGUNDOS}"
+        f"Max-Age={VALIDADE_DO_ESTADO_EM_SEGUNDOS}{s}"
     )
 
 
-def cabecalho_para_apagar_estado() -> str:
+def cabecalho_para_apagar_estado(seguro: bool = False) -> str:
     """Consumo de uso único: o mesmo `Path` do cookie, ou o navegador não o apaga."""
+    s = "; Secure" if seguro else ""
     return (
         f"{NOME_DO_COOKIE_DE_ESTADO}=; Path=/sso/; Expires=Thu, 01 Jan 1970 00:00:00 GMT; "
-        f"Max-Age=0; HttpOnly; SameSite=Lax"
+        f"Max-Age=0; HttpOnly; SameSite=Lax{s}"
     )
 
 

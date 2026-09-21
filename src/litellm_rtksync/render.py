@@ -656,8 +656,8 @@ def render_credentials_modal(auth_from_env: bool, lang: str) -> str:
             <div class="mb-3">
               <label class="form-label" for="novaSenha">{esc(translate("auth.new_password", lang))}</label>
               <input type="password" class="form-control" id="novaSenha" name="password"
-                     minlength="6" autocomplete="new-password" required
-                     pattern="(?=.*[a-z])(?=.*[A-Z])(?=.*\\d)(?=.*[^A-Za-z0-9]).{{6,}}"
+                     minlength="8" maxlength="20" autocomplete="new-password" required
+                     pattern="(?=.*[a-z])(?=.*[A-Z])(?=.*\\d)(?=.*[^A-Za-z0-9]).{{8,20}}"
                      title="{esc(translate("password.policy", lang))}">
               <div class="form-text">{esc(translate("password.policy", lang))}</div>
             </div>

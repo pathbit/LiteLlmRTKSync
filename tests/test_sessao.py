@@ -73,6 +73,26 @@ class CookieDeSessao(unittest.TestCase):
         self.assertIn("Max-Age=0", cabecalho)
         self.assertIn("Expires=Thu, 01 Jan 1970 00:00:00 GMT", cabecalho)
 
+    def test_cabecalho_seguro_inclui_secure(self):
+        cabecalho = sessao.cabecalho_para_gravar("qualquer", seguro=True)
+        self.assertIn("; Secure", cabecalho)
+        cabecalho_inseguro = sessao.cabecalho_para_gravar("qualquer", seguro=False)
+        self.assertNotIn("Secure", cabecalho_inseguro)
+
+    def test_apagar_seguro_inclui_secure(self):
+        cabecalho = sessao.cabecalho_para_apagar(seguro=True)
+        self.assertIn("; Secure", cabecalho)
+        cabecalho_inseguro = sessao.cabecalho_para_apagar(seguro=False)
+        self.assertNotIn("Secure", cabecalho_inseguro)
+
+    def test_estado_seguro_inclui_secure(self):
+        cabecalho = sessao.cabecalho_para_gravar_estado("qualquer", seguro=True)
+        self.assertIn("; Secure", cabecalho)
+        cabecalho_apagar = sessao.cabecalho_para_apagar_estado(seguro=True)
+        self.assertIn("; Secure", cabecalho_apagar)
+        cabecalho_inseguro = sessao.cabecalho_para_gravar_estado("qualquer", seguro=False)
+        self.assertNotIn("Secure", cabecalho_inseguro)
+
     def test_assinatura_vinculada_ao_nome_do_cookie(self):
         """Um cookie emitido para um produto nao pode ser aceito por outro."""
         import hmac
