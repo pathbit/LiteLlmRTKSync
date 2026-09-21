@@ -22,9 +22,9 @@ on:
   workflow_dispatch:
     inputs:
       keep:
-        description: "Quantas versoes marcadas manter"
+        description: "Quantas versoes marcadas manter alem da latest (total: 1 + N)"
         required: false
-        default: "3"
+        default: "2"
       dry-run:
         description: "Simular: lista o que seria apagado sem apagar"
         required: false
@@ -58,10 +58,8 @@ jobs:
           token: ${{ secrets.GITHUB_TOKEN }}
           owner: ${{ github.repository_owner }}
           packages: litellmrtksync
-          # Guarda as N imagens marcadas mais recentes, com as camadas de
-          # plataforma de cada uma. 'latest' fica de fora da contagem por
-          # seguranca, ainda que por construcao ela aponte para a mais nova.
-          keep-n-tagged: ${{ github.event.inputs.keep || '3' }}
+          # Guarda 2 imagens marcadas anteriores mais a 'latest' (totalizando exatamente 3 versoes ativas).
+          keep-n-tagged: ${{ github.event.inputs.keep || '2' }}
           exclude-tags: latest
           # Apaga apenas manifestos orfaos de verdade: os que sobraram de
           # builds ja aposentados e nao pertencem a nenhuma tag preservada.
