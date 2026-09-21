@@ -32,7 +32,8 @@ RECOVERY_USER = "admin"
 # Politica de senha do painel. Exigida sempre que a senha for definida ou
 # trocada pela tela; o ambiente headless nao passa por aqui porque quem opera
 # DASHBOARD_PASSWORD ja controla o segredo por fora.
-MIN_PASSWORD_LENGTH = 6
+MIN_PASSWORD_LENGTH = 8
+MAX_PASSWORD_LENGTH = 20
 SPECIAL_CHARACTERS = "!@#$%^&*()-_=+[]{};:,.<>?/\\|`~\"'"
 
 
@@ -43,15 +44,18 @@ def validate_password_strength(password: str) -> list:
     evita o vaivem de corrigir um requisito por tentativa.
     """
     problems = []
-    if len(password or "") < MIN_PASSWORD_LENGTH:
+    pwd = password or ""
+    if len(pwd) < MIN_PASSWORD_LENGTH:
         problems.append("password.too_short")
-    if not any(c.isupper() for c in password or ""):
+    elif len(pwd) > MAX_PASSWORD_LENGTH:
+        problems.append("password.too_long")
+    if not any(c.isupper() for c in pwd):
         problems.append("password.needs_upper")
-    if not any(c.islower() for c in password or ""):
+    if not any(c.islower() for c in pwd):
         problems.append("password.needs_lower")
-    if not any(c.isdigit() for c in password or ""):
+    if not any(c.isdigit() for c in pwd):
         problems.append("password.needs_digit")
-    if not any(c in SPECIAL_CHARACTERS for c in password or ""):
+    if not any(c in SPECIAL_CHARACTERS for c in pwd):
         problems.append("password.needs_special")
     return problems
 
