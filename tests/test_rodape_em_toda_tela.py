@@ -74,7 +74,7 @@ class ORodapeApareceEmTodaTela(unittest.TestCase):
     def test_cada_tela_traz_a_assinatura_uma_vez(self):
         for nome, desenha in self.telas().items():
             with self.subTest(tela=nome):
-                vezes = self.html(desenha).count("pela Pathbit")
+                vezes = self.html(desenha).count("by Pathbit")
                 self.assertEqual(
                     vezes, 1,
                     f"a tela '{nome}' traz a assinatura {vezes} vez(es). Zero "
@@ -103,6 +103,26 @@ class ORodapeApareceEmTodaTela(unittest.TestCase):
                 f"emoji {emoji!r} no rodapé: o desenho muda conforme o sistema "
                 f"de quem olha, e a regra do projeto é ícone de fonte",
             )
+
+    def test_o_rodape_fica_no_fim_da_tela_de_login(self):
+        """O rodape fica no final da pagina (abaixo do cartao), nao ao lado.
+
+        O body precisa ser d-flex flex-column min-vh-100 para que o flexbox
+        organize os elementos verticalmente, e o card deve ficar dentro de um
+        wrapper com flex-grow-1 empurrando o rodape para a base da tela.
+        """
+        html = self.html(self.telas()["login"])
+        self.assertIn("d-flex flex-column min-vh-100 justify-content-between", html)
+        self.assertIn("flex-grow-1", html)
+        pos_card = html.find("<main")
+        pos_rodape = html.find("<footer")
+        self.assertGreater(pos_rodape, pos_card, "O rodapé deve ficar abaixo do cartão de login")
+
+    def test_mensagem_de_logout_aparece_no_login(self):
+        """Quando o usuario faz logout, o login deve exibir o banner informativo."""
+        html = self.render.render_login_page(mensagem="Sessão encerrada com sucesso.").decode("utf-8")
+        self.assertIn("alert-info", html)
+        self.assertIn("Sessão encerrada com sucesso.", html)
 
 
 if __name__ == "__main__":

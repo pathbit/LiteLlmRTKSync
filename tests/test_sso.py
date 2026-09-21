@@ -1202,5 +1202,56 @@ class AssercaoSamlAssinada(unittest.TestCase):
         self.assertIn("EntityDescriptor", sso.metadata_do_sp(self.config))
 
 
+class NovosRecursosDeSSO(unittest.TestCase):
+    """Testa conexão OIDC/SAML, modo simultâneo (both), salvaguarda anti-lockout e desativação de senha."""
+
+    def test_teste_de_conexao_oidc_sem_emissor(self):
+        ok, msg = sso.testar_conexao_oidc("")
+        self.assertFalse(ok)
+        self.assertIn("emissor", msg.lower())
+
+    def test_teste_de_conexao_oidc_esquema_invalido(self):
+        ok, msg = sso.testar_conexao_oidc("ftp://exemplo.com")
+        self.assertFalse(ok)
+
+    def test_teste_de_conexao_saml_faltando_campos(self):
+        ok, msg = sso.testar_conexao_saml("", "", "")
+        self.assertFalse(ok)
+
+    def test_teste_de_conexao_saml_certificado_curto_recusado(self):
+        ok, msg = sso.testar_conexao_saml("https://idp.com", "http://127.0.0.1:5000/sso", "curto", "http://127.0.0.1:8080")
+        self.assertFalse(ok)
+        self.assertIn("truncado", msg.lower())
+
+    def test_teste_de_conexao_saml_sucesso(self):
+        cert = base64.b64encode(b"A" * 64).decode()
+        ok, msg = sso.testar_conexao_saml("https://idp.com", "http://127.0.0.1:5000/sso", cert, "http://127.0.0.1:8080")
+        if not sso.saml_disponivel():
+            self.assertFalse(ok)
+            self.assertIn("instalada", msg.lower())
+        else:
+            self.assertTrue(ok)
+            self.assertIn("validados com sucesso", msg.lower())
+
+    def test_anti_lockout_impede_desativar_todas_as_formas(self):
+        cfg = sso.ConfiguracaoSSO(provedor="", oidc_habilitado=False, saml_habilitado=False, senha_habilitada=False)
+        self.assertTrue(cfg.senha_esta_ligada())
+
+    def test_provedor_both_ativa_ambos_e_exibe_botoes(self):
+        cert = base64.b64encode(b"A" * 64).decode()
+        cfg = sso.ConfiguracaoSSO(
+            provedor="both", oidc_habilitado=True, saml_habilitado=True, senha_habilitada=True,
+            base_url="http://127.0.0.1:8080", issuer="http://127.0.0.1:5000", client_id="c",
+            idp_entity_id="idp", idp_sso_url="http://127.0.0.1:5000/sso", idp_cert=cert,
+            dominios=("empresa.com",), tem_segredo=True,
+        )
+        self.assertTrue(cfg.oidc_esta_ligado())
+        if sso.saml_disponivel():
+            self.assertTrue(cfg.saml_esta_ligado())
+        else:
+            self.assertFalse(cfg.saml_esta_ligado())
+        self.assertTrue(cfg.senha_esta_ligada())
+
+
 if __name__ == "__main__":
     unittest.main()

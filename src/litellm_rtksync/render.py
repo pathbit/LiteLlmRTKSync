@@ -34,6 +34,7 @@ from .identidade import (
     COR_DO_FAVICON,
     GLIFO_DO_FAVICON,
     ICONE_DO_PRODUTO,
+    NOME_DO_GATEWAY,
     NOME_DO_PRODUTO,
     PALETA,
 )
@@ -81,9 +82,10 @@ PAPEIS_DO_TEMA = (
 # isso fica aqui e não na identidade.
 COR_DO_TEXTO = "#e6e8ee"
 
-# Papéis que as páginas servidas antes do login precisam: login e erro têm
-# cartão, borda e um botão, e mais nada.
-PAPEIS_ANTES_DO_LOGIN = ("--bg", "--surface", "--line", "--accent")
+PAPEIS_ANTES_DO_LOGIN = (
+    "--bg", "--surface", "--surface-2", "--line", "--accent", "--accent-2",
+    "--brand-a", "--brand-b", "--text-dim"
+)
 
 
 def tokens_do_tema(recuo: str = "      ") -> str:
@@ -188,7 +190,38 @@ def format_timestamp_curto(value: Optional[str]) -> str:
     return momento.strftime("%d/%m %H:%M")
 
 
-def rodape_da_pathbit() -> str:
+def script_de_idioma() -> str:
+    """Script inline para sincronizar localStorage, sessionStorage e cookies."""
+    return """
+  <script>
+  (function() {
+    try {
+      var salvo = localStorage.getItem('rtksync_lang') || sessionStorage.getItem('rtksync_lang');
+      var atual = document.documentElement.lang;
+      if (salvo && ['en', 'pt', 'es'].indexOf(salvo) !== -1) {
+        document.cookie = 'rtksync_lang=' + encodeURIComponent(salvo) + '; path=/; max-age=31536000; SameSite=Lax';
+        if (salvo !== atual && !new URLSearchParams(window.location.search).has('lang')) {
+          var u = new URL(window.location.href);
+          u.searchParams.set('lang', salvo);
+          window.location.replace(u.toString());
+        }
+      }
+    } catch(e) {}
+  })();
+  function setRtksyncLang(lang) {
+    try {
+      localStorage.setItem('rtksync_lang', lang);
+      sessionStorage.setItem('rtksync_lang', lang);
+      document.cookie = 'rtksync_lang=' + encodeURIComponent(lang) + '; path=/; max-age=31536000; SameSite=Lax';
+    } catch(e) {}
+    var u = new URL(window.location.href);
+    u.searchParams.set('lang', lang);
+    window.location.href = u.toString();
+  }
+  </script>"""
+
+
+def rodape_da_pathbit(lang: str = DEFAULT_LANGUAGE, com_seletor: bool = False) -> str:
     """A assinatura da casa, igual nos três painéis e em TODA tela.
 
     Fora do catálogo de tradução de propósito: é nome próprio e assinatura de
@@ -199,10 +232,38 @@ def rodape_da_pathbit() -> str:
     O coração é `bi-heart-fill`, e não o emoji: o cabeçalho deste módulo fixa
     "Bootstrap Icons, nunca emoji", e emoji muda de desenho conforme o sistema.
     """
+    ano = datetime.now().year
+    if com_seletor:
+        lang = normalize_language(lang)
+        botoes = []
+        for code, (label, flag) in LANGUAGES.items():
+            active = " active" if code == lang else ""
+            botoes.append(
+                f'<a href="?lang={esc(code)}" '
+                f'class="btn btn-outline-secondary btn-sm{active}" '
+                f'onclick="setRtksyncLang(\'{esc(code)}\')" title="{esc(label)}">'
+                f'<span class="fi {esc(flag)} me-1"></span>{esc(label)}</a>'
+            )
+        grade = "".join(botoes)
+        return f"""
+    <footer class="login-footer w-100 py-3 mt-auto" style="background: rgba(0, 0, 0, 0.45); border-top: 1px solid var(--line);">
+      <div class="container-fluid px-4 d-flex flex-column flex-sm-row align-items-center justify-content-between gap-3">
+        <div class="d-flex align-items-center gap-2 mb-0">
+          <span class="text-secondary small me-1"><i class="bi bi-globe2 me-1" aria-hidden="true"></i>{esc(translate("language.label", lang))}:</span>
+          <div class="btn-group btn-group-sm" role="group" aria-label="{esc(translate("language.label", lang))}">
+            {grade}
+          </div>
+        </div>
+        <div class="text-secondary small text-center text-sm-end">
+          Made with <i class="bi bi-heart-fill" style="color: var(--bs-purple)" aria-hidden="true"></i>
+          by Pathbit - All rights reserved (c) {ano}
+        </div>
+      </div>
+    </footer>"""
     return f"""
-    <footer class="text-center text-secondary small py-3">
-      Feito com <i class="bi bi-heart-fill" style="color: var(--bs-purple)" aria-hidden="true"></i>
-      pela Pathbit - All rights reserved (c) {datetime.now().year}
+    <footer class="text-center text-secondary small py-3 w-100">
+      Made with <i class="bi bi-heart-fill" style="color: var(--bs-purple)" aria-hidden="true"></i>
+      by Pathbit - All rights reserved (c) {ano}
     </footer>"""
 
 def render_notice_page(title: str, body: str, link_label: str = "",
@@ -243,13 +304,15 @@ def render_notice_page(title: str, body: str, link_label: str = "",
   <link rel="stylesheet" href="{BOOTSTRAP_ICONS}">
   <style>body {{ background: {PALETA['--bg']}; }}</style>
 </head>
-<body class="d-flex align-items-center justify-content-center" style="min-height:100vh">
-  <div class="card text-center" style="max-width:34rem">
-    <div class="card-body p-4">
-      <i class="bi bi-shield-lock fs-1 text-secondary d-block mb-3" aria-hidden="true"></i>
-      <h1 class="h5 mb-3">{esc(title)}</h1>
-      <p class="text-secondary mb-3">{esc(body)}</p>
-      {link}
+<body class="d-flex flex-column min-vh-100 justify-content-between">
+  <div class="flex-grow-1 d-flex align-items-center justify-content-center p-3">
+    <div class="card text-center shadow-sm" style="max-width:34rem;width:100%">
+      <div class="card-body p-4">
+        <i class="bi bi-shield-lock fs-1 text-secondary d-block mb-3" aria-hidden="true"></i>
+        <h1 class="h5 mb-3">{esc(title)}</h1>
+        <p class="text-secondary mb-3">{esc(body)}</p>
+        {link}
+      </div>
     </div>
   </div>
 </body>
@@ -279,15 +342,17 @@ def render_landing_page(lang: str = DEFAULT_LANGUAGE) -> bytes:
   <title>{NOME_DO_PRODUTO}</title>
   <link rel="stylesheet" href="{BOOTSTRAP_CSS}">
   <link rel="stylesheet" href="{BOOTSTRAP_ICONS}">
-  <style>body {{ background: {PALETA['--bg']}; }}</style>
+  <style>body {{ background: {PALETA['--bg']}; color: {COR_DO_TEXTO}; }}</style>
 </head>
-<body class="d-flex align-items-center justify-content-center" style="min-height:100vh">
-  <div class="card text-center" style="max-width:30rem">
-    <div class="card-body p-4">
-      <span class="spinner-border text-secondary mb-3" role="status" aria-hidden="true"></span>
-      <h1 class="h5 mb-2">{esc(translate("sso.landing_title", lang))}</h1>
-      <p class="text-secondary mb-3">{esc(translate("sso.landing_body", lang))}</p>
-      <p class="mb-0"><a href="/">{esc(translate("auth.updated_link", lang))}</a></p>
+<body class="d-flex flex-column min-vh-100 justify-content-between">
+  <div class="flex-grow-1 d-flex align-items-center justify-content-center p-3">
+    <div class="card text-center shadow-sm" style="max-width:30rem;width:100%">
+      <div class="card-body p-4">
+        <span class="spinner-border text-secondary mb-3" role="status" aria-hidden="true"></span>
+        <h1 class="h5 mb-2">{esc(translate("sso.landing_title", lang))}</h1>
+        <p class="text-secondary mb-3">{esc(translate("sso.landing_body", lang))}</p>
+        <p class="mb-0"><a href="/">{esc(translate("auth.updated_link", lang))}</a></p>
+      </div>
     </div>
   </div>
   {rodape_da_pathbit()}
@@ -302,9 +367,12 @@ def render_login_page(
     dificuldade: int = 4,
     sso_nome: str = "",
     sso_indisponivel: bool = False,
-    # `sso` e a grafia do irmao cujo `web.py` entrega a configuracao inteira em
-    # vez do nome ja resolvido. As duas convivem ate `web.py` convergir.
     sso: Any = None,
+    mensagem: str = "",
+    *,
+    oidc_nome: str = "",
+    saml_nome: str = "",
+    senha_habilitada: bool = True,
 ) -> bytes:
     """Formulario de entrada, com a mesma casca e a mesma paleta do painel.
 
@@ -314,12 +382,24 @@ def render_login_page(
     pagina para preencher. Esta pagina resolve os quatro de uma vez.
     """
     lang = normalize_language(lang)
-    # O quinto argumento chega nas duas grafias, e num dos irmaos ele e
-    # posicional: objeto no lugar de texto e a configuracao, e o nome sai dela.
     if sso_nome and not isinstance(sso_nome, str):
         sso, sso_nome = sso_nome, ""
-    if sso is not None and not sso_nome:
-        sso_nome = sso.nome_do_provedor() if sso.esta_ligado() else ""
+    if sso is not None:
+        senha_habilitada = sso.senha_esta_ligada()
+        if sso.oidc_esta_ligado():
+            oidc_nome = sso.nome_do_oidc()
+        if sso.saml_esta_ligado():
+            saml_nome = sso.nome_do_saml()
+    elif sso_nome and not oidc_nome and not saml_nome:
+        oidc_nome = sso_nome
+
+    info_html = (
+        f'<div class="alert alert-info d-flex align-items-center gap-2 mb-3" role="alert">'
+        f'<i class="bi bi-info-circle-fill" aria-hidden="true"></i>'
+        f'<span>{esc(mensagem)}</span></div>'
+        if mensagem
+        else ""
+    )
     aviso = (
         f'<div class="alert alert-danger d-flex align-items-center gap-2 mb-3" role="alert">'
         f'<i class="bi bi-exclamation-octagon-fill" aria-hidden="true"></i>'
@@ -378,30 +458,65 @@ def render_login_page(
                 f'<input type="hidden" name="desafio" value="{esc(desafio)}">'
                 f'<input type="hidden" name="resposta" id="resposta" value="">'
             )
-    # O botao do SSO e um LINK, nunca um `<form>`: a CSP do painel declara
-    # `form-action 'self'` e o navegador bloqueia, sem erro visivel na tela, a
-    # submissao que redireciona para fora. Ele fica AO LADO do formulario local,
-    # que nao sai da tela em configuracao nenhuma -- se o provedor de identidade
-    # cair, ninguem entraria.
-    botao_sso = ""
-    if sso_nome:
-        botao_sso = (
-            f'<div class="d-flex align-items-center gap-2 my-3 text-secondary small">'
-            f'<hr class="flex-grow-1 my-0"><span>{esc(translate("sso.or", lang))}</span>'
-            f'<hr class="flex-grow-1 my-0"></div>'
+
+    botoes_sso = []
+    if oidc_nome and saml_nome and oidc_nome == saml_nome:
+        rotulo_oidc = f"{oidc_nome} (OIDC)"
+        rotulo_saml = f"{saml_nome} (SAML)"
+    else:
+        rotulo_oidc = oidc_nome
+        rotulo_saml = saml_nome
+
+    if rotulo_oidc:
+        botoes_sso.append(
             f'<a class="btn btn-outline-light w-100 d-inline-flex align-items-center '
-            f'justify-content-center gap-2" href="/sso/oidc/iniciar" rel="nofollow">'
+            f'justify-content-center gap-2 mb-2" href="/sso/oidc/iniciar" rel="nofollow">'
             f'<i class="bi bi-shield-check" aria-hidden="true"></i>'
-            f'{esc(translate("sso.sign_in_with", lang, provider=sso_nome))}</a>'
+            f'{esc(translate("sso.sign_in_with", lang, provider=rotulo_oidc))}</a>'
         )
-    elif sso_indisponivel:
-        # O provedor esta configurado, mas a imagem nao tem a biblioteca dele.
-        # Dizer isso e melhor do que esconder o botao e deixar a pergunta aberta.
-        botao_sso = (
+    if rotulo_saml:
+        botoes_sso.append(
+            f'<a class="btn btn-outline-light w-100 d-inline-flex align-items-center '
+            f'justify-content-center gap-2 mb-2" href="/sso/saml/iniciar" rel="nofollow">'
+            f'<i class="bi bi-shield-lock" aria-hidden="true"></i>'
+            f'{esc(translate("sso.sign_in_with", lang, provider=rotulo_saml))}</a>'
+        )
+    elif sso_indisponivel and not botoes_sso:
+        botoes_sso.append(
             '<p class="text-secondary small mt-3 mb-0 d-flex align-items-start gap-2">'
             '<i class="bi bi-plug" aria-hidden="true"></i>'
             f'<span>{esc(translate("sso.unavailable", lang))}</span></p>'
         )
+
+    if senha_habilitada:
+        form_html = f"""<form method="post" action="/login">
+          <div class="mb-3">
+            <label class="form-label small" for="usuario">{esc(translate("auth.user", lang))}</label>
+            <input class="form-control" id="usuario" name="usuario" autocomplete="username" autofocus required>
+          </div>
+          <div class="mb-4">
+            <label class="form-label small" for="senha">{esc(translate("auth.password", lang))}</label>
+            <input class="form-control" id="senha" name="senha" type="password"
+                   autocomplete="current-password" required>
+          </div>
+          {desafio_html}
+          <button class="btn btn-primary w-100 fw-semibold" type="submit">
+            <i class="bi bi-box-arrow-in-right me-1" aria-hidden="true"></i>{esc(translate("auth.enter", lang))}
+          </button>
+        </form>"""
+        if botoes_sso:
+            bloco_sso = (
+                f'<div class="d-flex align-items-center gap-2 my-3 text-secondary small">'
+                f'<hr class="flex-grow-1 my-0"><span>{esc(translate("sso.or", lang))}</span>'
+                f'<hr class="flex-grow-1 my-0"></div>'
+                + "".join(botoes_sso)
+            )
+        else:
+            bloco_sso = ""
+    else:
+        form_html = ""
+        bloco_sso = "".join(botoes_sso)
+
     return f"""<!DOCTYPE html>
 <html lang="{esc(lang)}" data-bs-theme="dark">
 <head>
@@ -412,45 +527,46 @@ def render_login_page(
   <title>{NOME_DO_PRODUTO}</title>
   <link rel="stylesheet" href="{BOOTSTRAP_CSS}">
   <link rel="stylesheet" href="{BOOTSTRAP_ICONS}">
+  <link rel="stylesheet" href="{FLAG_ICONS}">
+  {script_de_idioma()}
   <style>
     :root {{ {tokens_antes_do_login()} }}
     body {{ background: var(--bg); color: var(--text); font-family: {FONT_STACK}; }}
-    .card {{ background: var(--surface); border: 1px solid var(--line); }}
+    .card {{ background: var(--surface); border: 1px solid var(--line); border-radius: .5rem; }}
+    .brand-mark {{ width: 2.25rem; height: 2.25rem; display: grid; place-items: center; border-radius: .5rem;
+                   background: color-mix(in srgb, var(--brand-b) 22%, transparent);
+                   border: 1px solid color-mix(in srgb, var(--brand-b) 45%, transparent);
+                   color: #fff; font-size: 1.15rem; }}
     .btn-primary {{ --bs-btn-bg: var(--accent); --bs-btn-border-color: var(--accent);
-                    --bs-btn-color: var(--bg); --bs-btn-hover-bg: var(--accent);
-                    --bs-btn-hover-border-color: var(--accent); --bs-btn-hover-color: var(--bg); }}
+                    --bs-btn-color: var(--bg); --bs-btn-hover-bg: var(--accent-2);
+                    --bs-btn-hover-border-color: var(--accent-2); --bs-btn-hover-color: var(--bg);
+                    --bs-btn-active-bg: var(--accent-2); --bs-btn-active-border-color: var(--accent-2);
+                    --bs-btn-active-color: var(--bg); }}
     .form-control {{ background: var(--bg); border-color: var(--line); color: var(--text); }}
     .form-control:focus {{ background: var(--bg); color: var(--text);
-                           border-color: var(--accent); box-shadow: none; }}
+                           border-color: var(--accent); box-shadow: 0 0 0 .2rem color-mix(in srgb, var(--accent) 25%, transparent); }}
   </style>
 </head>
-<body class="d-flex align-items-center justify-content-center" style="min-height:100vh">
-  <main class="card" style="max-width:24rem;width:100%">
-    <div class="card-body p-4">
-      <h1 class="h5 mb-1 d-flex align-items-center gap-2">
-        <i class="bi bi-shield-lock" aria-hidden="true"></i>{NOME_DO_PRODUTO}
-      </h1>
-      <p class="text-secondary small mb-4">{esc(translate("auth.login_intro", lang))}</p>
-      {aviso}
-      <form method="post" action="/login">
-        <div class="mb-3">
-          <label class="form-label small" for="usuario">{esc(translate("auth.user", lang))}</label>
-          <input class="form-control" id="usuario" name="usuario" autocomplete="username" autofocus required>
+<body class="d-flex flex-column min-vh-100 justify-content-between">
+  <div class="flex-grow-1 d-flex align-items-center justify-content-center p-3">
+    <main class="card shadow-sm" style="max-width:26rem;width:100%">
+      <div class="card-body p-4">
+        <div class="d-flex align-items-center gap-3 mb-3">
+          <span class="brand-mark"><i class="bi {ICONE_DO_PRODUTO}" aria-hidden="true"></i></span>
+          <div>
+            <h1 class="h5 mb-0 fw-bold">{NOME_DO_PRODUTO}</h1>
+            <span class="text-secondary small font-monospace">{NOME_DO_GATEWAY}</span>
+          </div>
         </div>
-        <div class="mb-4">
-          <label class="form-label small" for="senha">{esc(translate("auth.password", lang))}</label>
-          <input class="form-control" id="senha" name="senha" type="password"
-                 autocomplete="current-password" required>
-        </div>
-        {desafio_html}
-        <button class="btn btn-primary w-100" type="submit">
-          <i class="bi bi-box-arrow-in-right me-1" aria-hidden="true"></i>{esc(translate("auth.enter", lang))}
-        </button>
-      </form>
-      {botao_sso}
-    </div>
-  </main>
-  {rodape_da_pathbit()}
+        <p class="text-secondary small mb-3">{esc(translate("auth.login_intro", lang))}</p>
+        {info_html}
+        {aviso}
+        {form_html}
+        {bloco_sso}
+      </div>
+    </main>
+  </div>
+  {rodape_da_pathbit(lang, com_seletor=True)}
 </body>
 </html>""".encode("utf-8")
 
@@ -474,7 +590,7 @@ def render_language_switcher(current: str) -> str:
         active = " active" if code == current else ""
         items.append(
             f'<li><button class="dropdown-item d-flex align-items-center gap-2{active}" '
-            f'type="submit" name="lang" value="{esc(code)}">'
+            f'type="submit" name="lang" value="{esc(code)}" onclick="setRtksyncLang(\'{esc(code)}\')">'
             f'<span class="fi {esc(flag)}"></span>{esc(label)}</button></li>'
         )
     return f"""
@@ -1296,207 +1412,324 @@ def render_gateway_card(gateway: Dict[str, Any], db_path: str, lang: str) -> str
       </div>"""
 
 
-def _campo_sso(rotulo: str, nome: str, valor: str, dica: str = "",
-               tipo: str = "text", area: bool = False,
-               somente_leitura: bool = False, prefixo: str = "oidc") -> str:
-    """Um campo do formulario de acesso federado, com rotulo traduzido.
+def _campo_de_texto(nome: str, rotulo: str, valor: str, ajuda: str = "",
+                    placeholder: str = "", desabilitado: bool = False) -> str:
+    """Um campo de texto do formulario de SSO, com rotulo e ajuda traduzidos."""
+    trava = " disabled" if desabilitado else ""
+    dica = f'<div class="form-text">{esc(ajuda)}</div>' if ajuda else ""
+    return f"""
+              <div class="mb-3">
+                <label class="form-label small" for="sso_{esc(nome)}">{esc(rotulo)}</label>
+                <input class="form-control form-control-sm" id="sso_{esc(nome)}" name="{esc(nome)}"
+                       value="{esc(valor)}" placeholder="{esc(placeholder)}"
+                       autocomplete="off" spellcheck="false"{trava}>
+                {dica}
+              </div>"""
 
-    O `prefixo` existe porque as duas abas desenham campos de mesmo nome. Sem
-    ele, dois elementos dividiriam o mesmo `id` -- HTML invalido -- e o rotulo
-    da aba SAML levaria o foco para o campo escondido da aba OIDC.
+
+_campo_sso = _campo_de_texto
+
+
+def render_sso_modal(
+    sso_view: Any = None,
+    lang: str = DEFAULT_LANGUAGE,
+    *args,
+    **kwargs,
+) -> str:
+    """Corpo do modal de configuracao do SSO: abas OIDC e SAML2, controles de ativacao e teste.
+
+    O segredo do cliente NUNCA e reexibido. A tela diz apenas que existe um valor
+    guardado e oferece um campo para substitui-lo; salvar com o campo em branco
+    mantem o que ja esta la.
     """
-    identificador = f"sso-{prefixo}-" + nome.replace("_", "-")
-    ajuda = f'<div class="form-text">{esc(dica)}</div>' if dica else ""
-    if area:
-        controle = (
-            f'<textarea class="form-control font-monospace" id="{identificador}" '
-            f'name="{esc(nome)}" rows="4">{esc(valor)}</textarea>'
-        )
+    lang = normalize_language(lang)
+
+    if hasattr(sso_view, "base_url"):
+        sso_obj = sso_view
+        prov = sso_obj.provedor
+        senha_hab = sso_obj.senha_esta_ligada()
+        oidc_hab = sso_obj.oidc_esta_ligado()
+        saml_hab = sso_obj.saml_esta_ligado()
+        base_url = sso_obj.base_url or ""
+        issuer = sso_obj.issuer or ""
+        client_id = sso_obj.client_id or ""
+        scopes = sso_obj.escopos or ""
+        allowed_domains = ", ".join(sso_obj.dominios)
+        allowed_emails = ", ".join(sso_obj.emails)
+        idp_entity_id = sso_obj.idp_entity_id or ""
+        idp_sso_url = sso_obj.idp_sso_url or ""
+        idp_cert = sso_obj.idp_cert or ""
+        tem_segredo = sso_obj.tem_segredo
+        do_ambiente = sso_obj.segredo_vem_do_ambiente
+        desligado = sso_obj.desligado_no_ambiente
+        from .sso import saml_disponivel
+        saml_ok = saml_disponivel()
+        callback = sso_obj.url_de_retorno() if base_url else ""
+    elif isinstance(sso_view, dict) and "config" in sso_view:
+        dados = dict(sso_view)
+        config = dict(dados.get("config") or {})
+        prov = config.get("enabled", "")
+        senha_hab = config.get("password_enabled", "1") != "0"
+        oidc_hab = config.get("oidc_enabled", "1" if prov in ("oidc", "both", "all") else "0") == "1"
+        saml_hab = config.get("saml_enabled", "1" if prov in ("saml", "both", "all") else "0") == "1"
+        base_url = config.get("base_url", "")
+        issuer = config.get("issuer", "") or config.get("oidc_issuer", "")
+        client_id = config.get("client_id", "") or config.get("oidc_client_id", "")
+        scopes = config.get("scopes", "") or config.get("oidc_scopes", "")
+        allowed_domains = config.get("allowed_domains", "")
+        allowed_emails = config.get("allowed_emails", "")
+        idp_entity_id = config.get("saml_idp_entity_id", "") or config.get("idp_entity_id", "")
+        idp_sso_url = config.get("saml_idp_sso_url", "") or config.get("idp_sso_url", "")
+        idp_cert = config.get("saml_idp_cert", "") or config.get("idp_cert", "")
+        tem_segredo = bool(dados.get("tem_segredo"))
+        do_ambiente = bool(dados.get("segredo_do_ambiente"))
+        desligado = bool(dados.get("desligado_por_ambiente"))
+        saml_ok = bool(dados.get("saml_disponivel"))
+        callback = dados.get("callback_url") or ""
     else:
-        controle = (
-            f'<input class="form-control" id="{identificador}" name="{esc(nome)}" '
-            f'type="{esc(tipo)}" value="{esc(valor)}" autocomplete="off"'
-            f'{" readonly" if somente_leitura else ""}>'
-        )
-    return f"""
-              <div class="mb-3">
-                <label class="form-label small" for="{identificador}">{esc(rotulo)}</label>
-                {controle}
-                {ajuda}
-              </div>"""
+        config = dict(sso_view or {})
+        prov = config.get("enabled", "")
+        senha_hab = config.get("password_enabled", "1") != "0"
+        oidc_hab = config.get("oidc_enabled", "1" if prov in ("oidc", "both", "all") else "0") == "1"
+        saml_hab = config.get("saml_enabled", "1" if prov in ("saml", "both", "all") else "0") == "1"
+        base_url = config.get("base_url", "")
+        issuer = config.get("issuer", "") or config.get("oidc_issuer", "")
+        client_id = config.get("client_id", "") or config.get("oidc_client_id", "")
+        scopes = config.get("scopes", "") or config.get("oidc_scopes", "")
+        allowed_domains = config.get("allowed_domains", "")
+        allowed_emails = config.get("allowed_emails", "")
+        idp_entity_id = config.get("saml_idp_entity_id", "") or config.get("idp_entity_id", "")
+        idp_sso_url = config.get("saml_idp_sso_url", "") or config.get("idp_sso_url", "")
+        idp_cert = config.get("saml_idp_cert", "") or config.get("idp_cert", "")
+        tem_segredo = bool(args[0]) if len(args) > 0 else bool(config.get("tem_segredo"))
+        do_ambiente = bool(args[1]) if len(args) > 1 else bool(config.get("segredo_do_ambiente"))
+        desligado = bool(args[2]) if len(args) > 2 else bool(config.get("desligado_pelo_ambiente"))
+        from .sso import saml_disponivel
+        saml_ok = bool(config.get("saml_disponivel", saml_disponivel()))
+        callback = str(args[3]) if len(args) > 3 else (config.get("callback_url") or "")
 
-
-def _confirmacao_sso(lang: str, prefixo: str = "oidc") -> str:
-    """A senha local atual, exigida em toda gravacao de acesso federado.
-
-    Quem sequestra uma sessao de oito horas pode apontar o painel para um
-    provedor hostil e se pôr na lista de autorizados -- persistencia permanente
-    ganha com uma sessao roubada. Pedir a senha local de novo fecha isso.
-    """
-    return f"""
-              <hr class="my-3">
-              <div class="mb-3">
-                <label class="form-label small" for="sso-{prefixo}-usuario">{esc(translate("auth.user", lang))}</label>
-                <input class="form-control" id="sso-{prefixo}-usuario" name="usuario"
-                       autocomplete="username" required>
-              </div>
-              <div class="mb-3">
-                <label class="form-label small" for="sso-{prefixo}-senha">{esc(translate("sso.current_password", lang))}</label>
-                <input class="form-control" id="sso-{prefixo}-senha" name="senha" type="password"
-                       autocomplete="current-password" required>
-                <div class="form-text">{esc(translate("sso.confirm_hint", lang))}</div>
-              </div>"""
-
-
-def sso_disponivel_para_saml(sso: Any) -> bool:
-    """A biblioteca de SAML esta nesta imagem?
-
-    Perguntado ao modulo de SSO, e nao importado aqui: `render.py` nao conhece
-    protocolo nenhum, e a aba desabilitada e uma decisao de tela.
-    """
-    from .sso import saml_disponivel
-
-    return saml_disponivel()
-
-
-def render_sso_modal(sso: Any, lang: str) -> str:
-    """Corpo do modal de acesso federado: duas abas, um provedor por vez.
-
-    A casca do modal (titulo, botao de fechar) e comum aos tres paineis e mora
-    em `render_dashboard`; daqui sai so o CORPO, que e a parte presa ao
-    formulario que `web.py` sabe receber.
-
-    Um provedor de cada vez, e nunca os dois ligados: com dois emissores
-    legitimos, uma resposta de um pode ser aceita como se fosse do outro
-    (mix-up), e a allowlist passa a ter dois donos.
-
-    O segredo do cliente NUNCA volta para a tela. O campo mostra que ha um
-    valor guardado e permite substitui-lo; salvar em branco MANTEM o anterior.
-    """
-    if sso is None:
-        # Quem nunca configurou nada tambem precisa do formulario: um modal que
-        # so diz "desligado" nao tem como ligar coisa nenhuma.
-        from .sso import ConfiguracaoSSO
-
-        sso = ConfiguracaoSSO()
-
-    if sso.desligado_no_ambiente:
-        aviso_ambiente = f"""
-          <div class="alert alert-warning d-flex align-items-center gap-2" role="note">
-            <i class="bi bi-power" aria-hidden="true"></i>
+    aviso_ambiente = (
+        f"""
+          <div class="alert alert-warning d-flex align-items-start gap-2" role="note">
+            <i class="bi bi-exclamation-triangle-fill" aria-hidden="true"></i>
             <div>{esc(translate("sso.disabled_by_env", lang))}</div>
           </div>"""
-    else:
-        aviso_ambiente = ""
+        if desligado
+        else ""
+    )
 
-    if sso.esta_ligado():
-        situacao = translate("sso.status_on", lang, provider=sso.nome_do_provedor())
-        tom = "text-bg-success"
-    else:
-        situacao = translate("sso.status_off", lang)
-        tom = "text-bg-secondary"
+    estado_do_segredo = (
+        translate("sso.secret_from_env", lang)
+        if do_ambiente
+        else (
+            translate("sso.secret_stored", lang)
+            if tem_segredo
+            else translate("sso.secret_missing", lang)
+        )
+    )
 
-    if sso.segredo_vem_do_ambiente:
-        estado_do_segredo = translate("sso.secret_from_env", lang)
-        campo_do_segredo = (
-            '<input class="form-control" type="password" value="" disabled '
-            'placeholder="••••••••">'
-        )
-    else:
-        estado_do_segredo = translate(
-            "sso.secret_stored" if sso.tem_segredo else "sso.secret_absent", lang
-        )
-        campo_do_segredo = (
-            '<input class="form-control" id="sso-oidc-client-secret" name="client_secret" '
-            'type="password" value="" autocomplete="new-password" placeholder="••••••••">'
-        )
-
-    retorno = sso.url_de_retorno() if sso.base_url else ""
-    metadata = sso.entity_id() if sso.base_url else ""
+    bloco_callback = (
+        f"""
+              <div class="mb-3">
+                <label class="form-label small">{esc(translate("sso.callback_url", lang))}</label>
+                <div class="form-control form-control-sm font-monospace text-truncate"
+                     title="{esc(callback)}">{esc(callback)}</div>
+                <div class="form-text">{esc(translate("sso.callback_help", lang))}</div>
+              </div>"""
+        if callback
+        else ""
+    )
 
     aba_oidc = f"""
-            <form method="post" action="/acoes/sso" class="pt-3">
-              <input type="hidden" name="enabled" value="oidc">
-              {_campo_sso(translate("sso.base_url", lang), "base_url", sso.base_url,
-                          translate("sso.base_url_hint", lang))}
-              {_campo_sso(translate("sso.redirect_uri", lang), "redirect_uri_exibido", retorno,
-                          somente_leitura=True)}
-              {_campo_sso(translate("sso.issuer", lang), "issuer", sso.issuer)}
-              {_campo_sso(translate("sso.client_id", lang), "client_id", sso.client_id)}
+              {_campo_de_texto("base_url", translate("sso.base_url", lang),
+                               base_url, translate("sso.base_url_help", lang),
+                               "https://painel.exemplo.com")}
+              {bloco_callback}
+              {_campo_de_texto("issuer", translate("sso.issuer", lang),
+                               issuer, translate("sso.issuer_help", lang),
+                               "https://accounts.google.com")}
+              {_campo_de_texto("client_id", translate("sso.client_id", lang),
+                               client_id)}
               <div class="mb-3">
-                <label class="form-label small" for="sso-oidc-client-secret">{esc(translate("sso.client_secret", lang))}</label>
-                {campo_do_segredo}
-                <div class="form-text">{esc(estado_do_segredo)}</div>
+                <label class="form-label small" for="sso_client_secret">{esc(translate("sso.client_secret", lang))}</label>
+                <input class="form-control form-control-sm" id="sso_client_secret" name="client_secret"
+                       type="password" autocomplete="new-password"
+                       placeholder="{esc("••••••••" if tem_segredo else "")}"
+                       {"disabled" if do_ambiente else ""}>
+                <div class="form-text">{esc(estado_do_segredo)} {esc(translate("sso.secret_keep_help", lang))}</div>
               </div>
-              {_campo_sso(translate("sso.scopes", lang), "scopes", sso.escopos)}
-              {_campo_sso(translate("sso.allowed_domains", lang), "allowed_domains",
-                          ", ".join(sso.dominios), translate("sso.allowlist_hint", lang))}
-              {_campo_sso(translate("sso.allowed_emails", lang), "allowed_emails",
-                          ", ".join(sso.emails))}
-              {_confirmacao_sso(lang)}
-              <div class="d-flex gap-2">
-                <button class="btn btn-primary flex-grow-1" type="submit">
-                  <i class="bi bi-save me-1" aria-hidden="true"></i>{esc(translate("sso.save", lang))}
-                </button>
-                <button class="btn btn-outline-light" type="submit" name="desligar" value="1">
-                  <i class="bi bi-power me-1" aria-hidden="true"></i>{esc(translate("sso.status_off", lang))}
+              {_campo_de_texto("scopes", translate("sso.scopes", lang),
+                               scopes, translate("sso.scopes_help", lang))}
+              {_campo_de_texto("allowed_domains", translate("sso.allowed_domains", lang),
+                               allowed_domains,
+                               translate("sso.allowlist_help", lang), "empresa.com,filial.com")}
+              {_campo_de_texto("allowed_emails", translate("sso.allowed_emails", lang),
+                               allowed_emails, "", "chefe@empresa.com")}
+              <div class="d-flex align-items-center gap-2 mt-3">
+                <button type="button" class="btn btn-outline-secondary btn-sm" id="btnTestarOIDC">
+                  <i class="bi bi-broadcast me-1" aria-hidden="true"></i>{esc(translate("sso.test_oidc", lang))}
                 </button>
               </div>
-            </form>"""
+              <div id="resTestOIDC" class="mt-2" style="display:none"></div>"""
 
-    if not sso_disponivel_para_saml(sso):
-        aba_saml = f"""
-            <div class="alert alert-secondary d-flex align-items-center gap-2 mt-3 mb-0" role="note">
-              <i class="bi bi-info-circle" aria-hidden="true"></i>
-              <div>{esc(translate("sso.saml_unavailable", lang))}</div>
-            </div>"""
+    if saml_ok:
+        base = base_url.rstrip("/") if base_url else ""
+        bloco_saml_endpoints = (
+            f"""
+              <div class="mb-3">
+                <label class="form-label small">{esc(translate("sso.saml_acs_url", lang))}</label>
+                <div class="form-control form-control-sm font-monospace text-truncate"
+                     title="{esc(base + '/sso/saml/acs')}">{esc(base + '/sso/saml/acs')}</div>
+                <div class="form-text">{esc(translate("sso.saml_acs_help", lang))}</div>
+              </div>
+              <div class="mb-3">
+                <label class="form-label small">{esc(translate("sso.saml_metadata_url", lang))}</label>
+                <div class="form-control form-control-sm font-monospace text-truncate"
+                     title="{esc(base + '/sso/saml/metadata')}">{esc(base + '/sso/saml/metadata')}</div>
+                <div class="form-text">{esc(translate("sso.saml_metadata_help", lang))}</div>
+              </div>"""
+            if base
+            else ""
+        )
+        aviso_saml = f"""
+              <div class="alert alert-secondary d-flex align-items-start gap-2" role="note">
+                <i class="bi bi-info-circle-fill" aria-hidden="true"></i>
+                <div>{esc(translate("sso.saml_active_help", lang))}</div>
+              </div>"""
     else:
-        aba_saml = f"""
-            <form method="post" action="/acoes/sso" class="pt-3">
-              <input type="hidden" name="enabled" value="saml">
-              {_campo_sso(translate("sso.base_url", lang), "base_url", sso.base_url,
-                          translate("sso.base_url_hint", lang), prefixo="saml")}
-              {_campo_sso(translate("sso.idp_entity_id", lang), "idp_entity_id",
-                          sso.idp_entity_id, prefixo="saml")}
-              {_campo_sso(translate("sso.idp_sso_url", lang), "idp_sso_url",
-                          sso.idp_sso_url, prefixo="saml")}
-              {_campo_sso(translate("sso.idp_cert", lang), "idp_cert", sso.idp_cert,
-                          translate("sso.metadata_hint", lang, url=metadata), area=True,
-                          prefixo="saml")}
-              {_campo_sso(translate("sso.allowed_domains", lang), "allowed_domains",
-                          ", ".join(sso.dominios), translate("sso.allowlist_hint", lang),
-                          prefixo="saml")}
-              {_campo_sso(translate("sso.allowed_emails", lang), "allowed_emails",
-                          ", ".join(sso.emails), prefixo="saml")}
-              {_confirmacao_sso(lang, "saml")}
-              <button class="btn btn-primary w-100" type="submit">
-                <i class="bi bi-save me-1" aria-hidden="true"></i>{esc(translate("sso.save", lang))}
-              </button>
-            </form>"""
+        bloco_saml_endpoints = ""
+        aviso_saml = f"""
+              <div class="alert alert-secondary d-flex align-items-start gap-2" role="note">
+                <i class="bi bi-info-circle-fill" aria-hidden="true"></i>
+                <div>{esc(translate("sso.saml_unavailable", lang))}</div>
+              </div>"""
+
+    aba_saml = f"""
+              {aviso_saml}
+              {bloco_saml_endpoints}
+              {_campo_de_texto("saml_idp_entity_id", translate("sso.idp_entity_id", lang),
+                               idp_entity_id, "", "", desabilitado=not saml_ok)}
+              {_campo_de_texto("saml_idp_sso_url", translate("sso.idp_sso_url", lang),
+                               idp_sso_url, "", "", desabilitado=not saml_ok)}
+              {_campo_de_texto("saml_idp_cert", translate("sso.idp_cert", lang),
+                               idp_cert, translate("sso.idp_cert_help", lang), "", desabilitado=not saml_ok)}
+              <div class="d-flex align-items-center gap-2 mt-3">
+                <button type="button" class="btn btn-outline-secondary btn-sm" id="btnTestarSAML"{"" if saml_ok else " disabled"}>
+                  <i class="bi bi-broadcast me-1" aria-hidden="true"></i>{esc(translate("sso.test_saml", lang))}
+                </button>
+              </div>
+              <div id="resTestSAML" class="mt-2" style="display:none"></div>"""
 
     return f"""
           {aviso_ambiente}
           <p class="text-secondary small">{esc(translate("sso.intro", lang))}</p>
-          <p class="small mb-3">
-            <span class="text-secondary">{esc(translate("sso.provider", lang))}:</span>
-            <span class="badge {tom}">{esc(situacao)}</span>
-          </p>
-          <ul class="nav nav-tabs" role="tablist">
-            <li class="nav-item" role="presentation">
-              <button class="nav-link active" data-bs-toggle="tab" data-bs-target="#abaOIDC"
-                      type="button" role="tab">{esc(translate("sso.tab_oidc", lang))}</button>
-            </li>
-            <li class="nav-item" role="presentation">
-              <button class="nav-link" data-bs-toggle="tab" data-bs-target="#abaSAML"
-                      type="button" role="tab">{esc(translate("sso.tab_saml", lang))}</button>
-            </li>
-          </ul>
-          <div class="tab-content">
-            <div class="tab-pane fade show active" id="abaOIDC" role="tabpanel">{aba_oidc}
+          <div class="alert alert-secondary d-flex align-items-start gap-2" role="note">
+            <i class="bi bi-hdd-network" aria-hidden="true"></i>
+            <div>{esc(translate("sso.tunnel_warning", lang))}</div>
+          </div>
+          <form method="post" action="/acoes/sso">
+            <input type="hidden" name="password_enabled" value="0">
+            <input type="hidden" name="oidc_enabled" value="0">
+            <input type="hidden" name="saml_enabled" value="0">
+            <div class="card mb-3 bg-body-tertiary border-secondary-subtle">
+              <div class="card-body p-3">
+                <label class="form-label small fw-semibold text-secondary mb-2 d-block">{esc(translate("auth.authentication", lang))}</label>
+                <div class="form-check form-switch mb-2">
+                  <input class="form-check-input" type="checkbox" id="sso_password_enabled" name="password_enabled" value="1"{' checked' if senha_hab else ''}>
+                  <label class="form-check-label small" for="sso_password_enabled">{esc(translate("sso.enable_password", lang))}</label>
+                  <div class="form-text mt-0">{esc(translate("sso.enable_password_help", lang))}</div>
+                </div>
+                <div class="form-check form-switch mb-2">
+                  <input class="form-check-input" type="checkbox" id="sso_oidc_enabled" name="oidc_enabled" value="1"{' checked' if oidc_hab else ''}>
+                  <label class="form-check-label small" for="sso_oidc_enabled">{esc(translate("sso.enable_oidc", lang))}</label>
+                </div>
+                <div class="form-check form-switch">
+                  <input class="form-check-input" type="checkbox" id="sso_saml_enabled" name="saml_enabled" value="1"{' checked' if saml_hab else ''}{'' if saml_ok else ' disabled'}>
+                  <label class="form-check-label small" for="sso_saml_enabled">{esc(translate("sso.enable_saml", lang))}</label>
+                </div>
+              </div>
             </div>
-            <div class="tab-pane fade" id="abaSAML" role="tabpanel">{aba_saml}
+            <ul class="nav nav-tabs mb-3" role="tablist">
+              <li class="nav-item" role="presentation">
+                <button class="nav-link active" type="button" role="tab"
+                        data-bs-toggle="tab" data-bs-target="#abaOIDC"
+                        aria-controls="abaOIDC" aria-selected="true">{esc(translate("sso.tab_oidc", lang))}</button>
+              </li>
+              <li class="nav-item" role="presentation">
+                <button class="nav-link" type="button" role="tab"
+                        data-bs-toggle="tab" data-bs-target="#abaSAML"
+                        aria-controls="abaSAML" aria-selected="false">{esc(translate("sso.tab_saml", lang))}</button>
+              </li>
+            </ul>
+            <div class="tab-content">
+              <div class="tab-pane fade show active" id="abaOIDC" role="tabpanel">{aba_oidc}
+              </div>
+              <div class="tab-pane fade" id="abaSAML" role="tabpanel">{aba_saml}
+              </div>
             </div>
-          </div>"""
+            <hr>
+            <div class="mb-3">
+              <label class="form-label small" for="sso_senha_atual">{esc(translate("sso.current_password", lang))}</label>
+              <input class="form-control form-control-sm" id="sso_senha_atual" name="senha_atual"
+                     type="password" autocomplete="current-password" required>
+              <div class="form-text">{esc(translate("sso.current_password_help", lang))}</div>
+            </div>
+            <button class="btn btn-primary w-100" type="submit">
+              <i class="bi bi-save me-1" aria-hidden="true"></i>{esc(translate("sso.save", lang))}
+            </button>
+          </form>
+          <script>
+          (function() {{
+            function bindTest(btnId, resId, url, dataFn) {{
+              var btn = document.getElementById(btnId);
+              var res = document.getElementById(resId);
+              if (!btn || !res) return;
+              btn.addEventListener('click', function() {{
+                btn.disabled = true;
+                res.style.display = 'block';
+                res.className = 'alert alert-info py-2 small';
+                res.innerHTML = '<span class="spinner-border spinner-border-sm me-2" role="status"></span>Testando conexão...';
+                var req = new XMLHttpRequest();
+                req.open('POST', url);
+                req.setRequestHeader('Content-Type', 'application/json');
+                req.setRequestHeader('Accept', 'application/json');
+                req.onload = function() {{
+                  btn.disabled = false;
+                  try {{
+                    var data = JSON.parse(req.responseText);
+                    res.className = data.ok ? 'alert alert-success py-2 small' : 'alert alert-danger py-2 small';
+                    res.textContent = data.mensagem || (data.ok ? 'OK' : 'Falha');
+                  }} catch (e) {{
+                    res.className = 'alert alert-danger py-2 small';
+                    res.textContent = 'Erro ao processar resposta: ' + req.responseText;
+                  }}
+                }};
+                req.onerror = function() {{
+                  btn.disabled = false;
+                  res.className = 'alert alert-danger py-2 small';
+                  res.textContent = 'Erro de rede ao conectar';
+                }};
+                req.send(JSON.stringify(dataFn()));
+              }});
+            }}
+            bindTest('btnTestarOIDC', 'resTestOIDC', '/api/sso/test-oidc', function() {{
+              return {{
+                issuer: (document.getElementById('sso_issuer') || {{}}).value || '',
+                client_id: (document.getElementById('sso_client_id') || {{}}).value || '',
+                base_url: (document.getElementById('sso_base_url') || {{}}).value || ''
+              }};
+            }});
+            bindTest('btnTestarSAML', 'resTestSAML', '/api/sso/test-saml', function() {{
+              return {{
+                saml_idp_entity_id: (document.getElementById('sso_saml_idp_entity_id') || {{}}).value || '',
+                saml_idp_sso_url: (document.getElementById('sso_saml_idp_sso_url') || {{}}).value || '',
+                saml_idp_cert: (document.getElementById('sso_saml_idp_cert') || {{}}).value || '',
+                base_url: (document.getElementById('sso_base_url') || {{}}).value || ''
+              }};
+            }});
+          }})();
+          </script>"""
+
 
 
 def render_dashboard(
@@ -1587,6 +1820,7 @@ def render_dashboard(
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link rel="stylesheet" href="{GOOGLE_FONTS}">
+  {script_de_idioma()}
   <style>
     /* ------------------------------------------------------------------
        Identidade visual: os tres paineis da familia RTKSync tem a MESMA

@@ -35,7 +35,11 @@ _SEGREDO = secrets.token_bytes(32)
 
 
 def _assina(carga: str) -> str:
-    return hmac.new(_SEGREDO, carga.encode("utf-8"), hashlib.sha256).hexdigest()
+    return hmac.new(
+        _SEGREDO,
+        f"sessao|{NOME_DO_COOKIE}|".encode("ascii") + carga.encode("utf-8"),
+        hashlib.sha256,
+    ).hexdigest()
 
 
 def _assina_estado(carga: str) -> str:
@@ -109,7 +113,10 @@ def cabecalho_para_gravar(valor: str) -> str:
 
 
 def cabecalho_para_apagar() -> str:
-    return f"{NOME_DO_COOKIE}=; Path=/; HttpOnly; SameSite=Strict; Max-Age=0"
+    return (
+        f"{NOME_DO_COOKIE}=; Path=/; Expires=Thu, 01 Jan 1970 00:00:00 GMT; "
+        f"Max-Age=0; HttpOnly; SameSite=Strict"
+    )
 
 
 def ler_cookie(cabecalho_cookie: str, nome_procurado: str) -> str:
@@ -191,7 +198,10 @@ def cabecalho_para_gravar_estado(valor: str) -> str:
 
 def cabecalho_para_apagar_estado() -> str:
     """Consumo de uso único: o mesmo `Path` do cookie, ou o navegador não o apaga."""
-    return f"{NOME_DO_COOKIE_DE_ESTADO}=; Path=/sso/; HttpOnly; SameSite=Lax; Max-Age=0"
+    return (
+        f"{NOME_DO_COOKIE_DE_ESTADO}=; Path=/sso/; Expires=Thu, 01 Jan 1970 00:00:00 GMT; "
+        f"Max-Age=0; HttpOnly; SameSite=Lax"
+    )
 
 
 def ler_estado_do_cabecalho(cabecalho_cookie: str) -> str:

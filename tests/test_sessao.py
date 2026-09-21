@@ -63,6 +63,30 @@ class CookieDeSessao(unittest.TestCase):
         """
         self.assertTrue(sessao.NOME_DO_COOKIE.startswith("litellmrtksync"))
 
+    def test_sair_apaga_cookie_com_data_no_passado(self):
+        cabecalho = sessao.cabecalho_para_apagar()
+        self.assertIn("Max-Age=0", cabecalho)
+        self.assertIn("Expires=Thu, 01 Jan 1970 00:00:00 GMT", cabecalho)
+
+    def test_sair_apaga_cookie_de_estado_com_data_no_passado(self):
+        cabecalho = sessao.cabecalho_para_apagar_estado()
+        self.assertIn("Max-Age=0", cabecalho)
+        self.assertIn("Expires=Thu, 01 Jan 1970 00:00:00 GMT", cabecalho)
+
+    def test_assinatura_vinculada_ao_nome_do_cookie(self):
+        """Um cookie emitido para um produto nao pode ser aceito por outro."""
+        import hmac
+        valor = sessao.emitir("admin")
+        self.assertEqual(sessao.usuario_da_sessao(valor), "admin")
+        corpo, _, _ = valor.rpartition(".")
+        assinatura_outro = hmac.new(
+            sessao._SEGREDO,
+            b"sessao|outro_cookie_sessao|" + corpo.encode("utf-8"),
+            "sha256",
+        ).hexdigest()
+        token_outro = f"{corpo}.{assinatura_outro}"
+        self.assertIsNone(sessao.usuario_da_sessao(token_outro))
+
 
 if __name__ == "__main__":
     unittest.main()

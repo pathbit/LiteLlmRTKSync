@@ -49,7 +49,7 @@ import urllib.request
 import zlib
 from dataclasses import dataclass
 from datetime import datetime, timezone
-from typing import Dict, Optional, Tuple
+from typing import Any, Dict, Optional, Tuple
 
 # A descoberta é o único passo do fluxo que fala com o provedor sem ninguém
 # esperando na frente da tela: quando ela falha, o botão some do login e o
@@ -62,6 +62,9 @@ _log = logging.getLogger(__name__)
 # painel. Nada aqui é segredo: são endereços públicos e uma lista de quem pode
 # entrar.
 CHAVE_PROVEDOR = "sso.enabled"
+CHAVE_SENHA_HABILITADA = "auth.password_enabled"
+CHAVE_OIDC_HABILITADO = "sso.oidc.enabled"
+CHAVE_SAML_HABILITADO = "sso.saml.enabled"
 CHAVE_BASE_URL = "sso.base_url"
 CHAVE_OIDC_ISSUER = "sso.oidc.issuer"
 CHAVE_OIDC_CLIENT_ID = "sso.oidc.client_id"
@@ -179,6 +182,8 @@ def _le_segredo(caminho: str) -> Tuple[str, bool]:
     do_ambiente = segredo_do_ambiente()
     if do_ambiente:
         return do_ambiente, True
+    if caminho and os.path.isdir(caminho):
+        caminho = os.path.join(caminho, ARQUIVO_DO_SEGREDO)
     if caminho and os.path.exists(caminho):
         try:
             with open(caminho, "r", encoding="utf-8") as arquivo:
@@ -242,6 +247,9 @@ class ConfiguracaoSSO:
     """O que o painel sabe sobre o provedor. Nenhum segredo mora aqui."""
 
     provedor: str = ""
+    oidc_habilitado: bool = False
+    saml_habilitado: bool = False
+    senha_habilitada: bool = True
     base_url: str = ""
     issuer: str = ""
     client_id: str = ""
@@ -262,22 +270,45 @@ class ConfiguracaoSSO:
         """Allowlist vazia significa que toda conta do provedor entraria."""
         return bool(self.dominios or self.emails)
 
-    def esta_ligado(self) -> bool:
-        """Só liga com configuração COMPLETA. Meia configuração fica desligada."""
+    def oidc_esta_ligado(self) -> bool:
         if self.desligado_no_ambiente:
+            return False
+        if not self.provedor or self.provedor in ("0", "none", "off", "false", "disabled"):
+            return False
+        if not self.oidc_habilitado and self.provedor not in ("oidc", "both", "all"):
             return False
         if not self.base_url or not self.tem_allowlist():
             return False
-        if self.provedor == "oidc":
-            return bool(self.issuer and self.client_id and self.tem_segredo)
-        if self.provedor == "saml":
-            return bool(
-                self.idp_entity_id
-                and self.idp_sso_url
-                and self.idp_cert
-                and saml_disponivel()
-            )
-        return False
+        return bool(self.issuer and self.client_id and self.tem_segredo)
+
+    def saml_esta_ligado(self) -> bool:
+        if self.desligado_no_ambiente:
+            return False
+        if not self.provedor or self.provedor in ("0", "none", "off", "false", "disabled"):
+            return False
+        if not self.saml_habilitado and self.provedor not in ("saml", "both", "all"):
+            return False
+        if not self.base_url or not self.tem_allowlist():
+            return False
+        return bool(
+            self.idp_entity_id
+            and self.idp_sso_url
+            and self.idp_cert
+            and saml_disponivel()
+        )
+
+    def esta_ligado(self) -> bool:
+        """Só liga com configuração COMPLETA. Meia configuração fica desligada."""
+        return self.oidc_esta_ligado() or self.saml_esta_ligado()
+
+    def senha_esta_ligada(self) -> bool:
+        """A senha local sempre pode ser usada se o SSO estiver desligado no ambiente
+        ou se nenhum provedor federado estiver ativo (salvaguarda contra lockout)."""
+        if self.desligado_no_ambiente:
+            return True
+        if not self.esta_ligado():
+            return True
+        return self.senha_habilitada
 
     # -- endereços ----------------------------------------------------------
     #
@@ -295,17 +326,30 @@ class ConfiguracaoSSO:
         return self.base_url.rstrip("/") + ROTA_SAML_METADATA
 
     def rota_de_entrada(self) -> str:
-        return ROTA_SAML_INICIAR if self.provedor == "saml" else ROTA_OIDC_INICIAR
+        if self.oidc_esta_ligado():
+            return ROTA_OIDC_INICIAR
+        return ROTA_SAML_INICIAR if self.saml_esta_ligado() else ROTA_OIDC_INICIAR
+
+    def nome_do_oidc(self) -> str:
+        if not self.issuer:
+            return "OIDC"
+        alvo = urllib.parse.urlsplit(self.issuer)
+        return alvo.hostname or self.issuer
+
+    def nome_do_saml(self) -> str:
+        origem = self.idp_sso_url or self.idp_entity_id
+        if not origem:
+            return "SAML 2.0"
+        alvo = urllib.parse.urlsplit(origem)
+        return alvo.hostname or origem
 
     def nome_do_provedor(self) -> str:
-        """Como o botão da tela de login chama o provedor.
-
-        É o host do issuer (ou do IdP), e não um rótulo digitado: assim o texto
-        do botão não pode discordar de para onde o clique leva.
-        """
-        origem = self.issuer if self.provedor == "oidc" else (
-            self.idp_sso_url or self.idp_entity_id
-        )
+        """Como o botão da tela de login chama o provedor."""
+        if self.oidc_esta_ligado():
+            return self.nome_do_oidc()
+        if self.saml_esta_ligado():
+            return self.nome_do_saml()
+        origem = self.issuer or self.idp_sso_url or self.idp_entity_id
         alvo = urllib.parse.urlsplit(origem or "")
         return alvo.hostname or (origem or "")
 
@@ -318,8 +362,20 @@ def carregar(prefs_path: str, caminho_do_segredo: str) -> ConfiguracaoSSO:
         return (get_preference(prefs_path, chave, padrao) or "").strip()
 
     segredo, do_ambiente = _le_segredo(caminho_do_segredo)
+    prov = ler(CHAVE_PROVEDOR).lower()
+    if prov in ("", "0", "none", "off", "false", "disabled"):
+        oidc_hab = False
+        saml_hab = False
+    else:
+        oidc_hab = ler(CHAVE_OIDC_HABILITADO, "1" if prov in ("oidc", "both", "all") else "0") == "1"
+        saml_hab = ler(CHAVE_SAML_HABILITADO, "1" if prov in ("saml", "both", "all") else "0") == "1"
+    senha_hab = ler(CHAVE_SENHA_HABILITADA, "1") != "0"
+
     return ConfiguracaoSSO(
-        provedor=ler(CHAVE_PROVEDOR).lower(),
+        provedor=prov,
+        oidc_habilitado=oidc_hab,
+        saml_habilitado=saml_hab,
+        senha_habilitada=senha_hab,
         base_url=ler(CHAVE_BASE_URL),
         issuer=ler(CHAVE_OIDC_ISSUER).rstrip("/"),
         client_id=ler(CHAVE_OIDC_CLIENT_ID),
@@ -349,13 +405,15 @@ def gravar(prefs_path: str, campos: Dict[str, str]) -> bool:
     return tudo_certo
 
 
-def email_autorizado(email: str, config: ConfiguracaoSSO) -> bool:
+def email_autorizado(email: str, config: Any) -> bool:
     """Allowlist OBRIGATÓRIA: e-mail exato, ou domínio inteiro.
 
     Sem ela, "entrar com Google" significa que toda conta Google do planeta
     entra no painel. Por isso a lista vazia não é "sem filtro": é o painel
     recusando ligar o SSO.
     """
+    if isinstance(config, dict):
+        config = _configuracao_de(config)
     alvo = (email or "").strip().lower()
     if not alvo or "@" not in alvo or not config.tem_allowlist():
         return False
@@ -758,7 +816,7 @@ def _atributo(valor: str) -> str:
     )
 
 
-def monta_authn_request(config: ConfiguracaoSSO, identificador: str,
+def monta_authn_request(config: Any, identificador: str,
                         agora: Optional[float] = None) -> str:
     """AuthnRequest mínima, NÃO assinada.
 
@@ -766,6 +824,8 @@ def monta_authn_request(config: ConfiguracaoSSO, identificador: str,
     0600 -- e quase nenhum IdP a exige. Se o do cliente exigir, é a próxima
     versão, com a chave seguindo a mesma regra do segredo OIDC.
     """
+    if isinstance(config, dict):
+        config = _configuracao_de(config)
     agora = agora if agora is not None else time.time()
     instante = datetime.fromtimestamp(agora, timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
     return (
@@ -781,13 +841,15 @@ def monta_authn_request(config: ConfiguracaoSSO, identificador: str,
     )
 
 
-def url_de_ida_saml(config: ConfiguracaoSSO, xml: str) -> str:
+def url_de_ida_saml(config: Any, xml: str) -> str:
     """HTTP-Redirect binding: deflate cru, base64 e querystring.
 
     Não é HTTP-POST binding porque um `<form action="https://idp/...">` bateria
     na CSP do painel, que declara `form-action 'self'` -- o navegador bloqueia a
     submissão e nada na tela explica por quê.
     """
+    if isinstance(config, dict):
+        config = _configuracao_de(config)
     compressor = zlib.compressobj(9, zlib.DEFLATED, -zlib.MAX_WBITS)
     cru = compressor.compress(xml.encode("utf-8")) + compressor.flush()
     parametro = base64.b64encode(cru).decode("ascii")
@@ -795,13 +857,15 @@ def url_de_ida_saml(config: ConfiguracaoSSO, xml: str) -> str:
     return config.idp_sso_url + juncao + urllib.parse.urlencode({"SAMLRequest": parametro})
 
 
-def configuracao_da_biblioteca(config: ConfiguracaoSSO) -> dict:
+def configuracao_da_biblioteca(config: Any) -> dict:
     """Settings do `python3-saml`, com os defaults perigosos sobrescritos.
 
     Por padrão a biblioteca monta a URL do ACS a partir de `http_host`/`https`
     da requisição e compara o `Destination` com ela -- exatamente a porta que
     fechamos no OIDC. Aqui tudo sai de `sso.base_url`.
     """
+    if isinstance(config, dict):
+        config = _configuracao_de(config)
     return {
         "strict": True,
         "debug": False,
@@ -838,12 +902,14 @@ def configuracao_da_biblioteca(config: ConfiguracaoSSO) -> dict:
     }
 
 
-def dados_da_requisicao(config: ConfiguracaoSSO, post: Dict[str, str]) -> dict:
+def dados_da_requisicao(config: Any, post: Dict[str, str]) -> dict:
     """O dicionário que a biblioteca lê no lugar da requisição.
 
     Montado por NÓS a partir de `sso.base_url`: nenhum cabeçalho da requisição
     entra aqui, que é o que impede o cliente de escolher o `Destination` aceito.
     """
+    if isinstance(config, dict):
+        config = _configuracao_de(config)
     partes = urllib.parse.urlsplit(config.base_url)
     # A porta viaja DENTRO do `http_host`, e não num campo próprio. O campo
     # separado está obsoleto na biblioteca, e preenchê-lo com vazio -- o que
@@ -860,7 +926,7 @@ def dados_da_requisicao(config: ConfiguracaoSSO, post: Dict[str, str]) -> dict:
     }
 
 
-def processa_resposta_saml(config: ConfiguracaoSSO, saml_response: str,
+def processa_resposta_saml(config: Any, saml_response: str,
                            id_pendente: str, agora: Optional[float] = None) -> str:
     """Valida a resposta do IdP e devolve o e-mail. Levanta FalhaDeSSO se algo falhar.
 
@@ -870,6 +936,8 @@ def processa_resposta_saml(config: ConfiguracaoSSO, saml_response: str,
     exige amarrar a referência da assinatura ao elemento efetivamente lido, o
     que não se faz com regex nem com `xml.etree`.
     """
+    if isinstance(config, dict):
+        config = _configuracao_de(config)
     if not saml_disponivel():
         raise FalhaDeSSO("SAML2 não está disponível nesta imagem")
     from onelogin.saml2.auth import OneLogin_Saml2_Auth  # import preguiçoso
@@ -912,12 +980,14 @@ def processa_resposta_saml(config: ConfiguracaoSSO, saml_response: str,
     return email
 
 
-def metadata_do_sp(config: ConfiguracaoSSO) -> str:
+def metadata_do_sp(config: Any) -> str:
     """XML de metadados que o operador entrega ao IdP.
 
     Servido apenas COM sessão: não há pressa nenhuma em publicá-lo sem login, e
     cada rota pública a mais é superfície a mais.
     """
+    if isinstance(config, dict):
+        config = _configuracao_de(config)
     if not saml_disponivel():
         raise FalhaDeSSO("SAML2 não está disponível nesta imagem")
     from onelogin.saml2.settings import OneLogin_Saml2_Settings  # import preguiçoso
@@ -931,3 +1001,574 @@ def metadata_do_sp(config: ConfiguracaoSSO) -> str:
     if isinstance(metadados, bytes):
         return metadados.decode("utf-8")
     return str(metadados)
+
+
+# ---------------------------------------------------------------------------
+# Testes de Conexão (OIDC e SAML2)
+# ---------------------------------------------------------------------------
+
+def testar_conexao_oidc(issuer: str, client_id: str = "", client_secret: str = "",
+                        base_url: str = "") -> Tuple[bool, str]:
+    """Testa a conexão com o provedor OIDC consultando o documento de descoberta."""
+    issuer = (issuer or "").strip().rstrip("/")
+    if not issuer:
+        return False, "O emissor (issuer) não foi informado."
+    partes = urllib.parse.urlsplit(issuer)
+    if partes.query or partes.fragment or not partes.netloc:
+        return False, "O emissor deve ser uma URL válida sem consulta ou fragmento."
+    if not _transporte_seguro(issuer):
+        return False, "O emissor deve utilizar HTTPS (exceto no loopback)."
+    limpa_cache_descoberta()
+    try:
+        doc = descobrir(issuer)
+    except Exception as e:
+        return False, f"Falha ao obter documento de descoberta: {e}"
+
+    if str(doc.get("issuer", "")).rstrip("/") != issuer:
+        return False, f"Emissor no documento ({doc.get('issuer')}) difere do configurado ({issuer})."
+
+    for endpoint in ("authorization_endpoint", "token_endpoint", "userinfo_endpoint"):
+        val = str(doc.get(endpoint) or "")
+        if not val:
+            return False, f"Documento de descoberta não contém '{endpoint}'."
+        if not _transporte_seguro(val):
+            return False, f"Endpoint '{endpoint}' não utiliza HTTPS."
+
+    return True, f"Conexão OIDC validada com sucesso! Endpoints encontrados."
+
+testa_conexao_oidc = testar_conexao_oidc
+
+
+def testar_conexao_saml(idp_entity_id: str, idp_sso_url: str, idp_cert: str,
+                        base_url: str = "") -> Tuple[bool, str]:
+    """Testa a configuração do IdP SAML2 e a geração de metadados do SP."""
+    idp_entity_id = (idp_entity_id or "").strip()
+    idp_sso_url = (idp_sso_url or "").strip()
+    idp_cert = (idp_cert or "").strip()
+
+    if not idp_entity_id:
+        return False, "O Entity ID do IdP é obrigatório."
+    if not idp_sso_url:
+        return False, "A URL de SSO do IdP é obrigatória."
+    if not _transporte_seguro(idp_sso_url):
+        return False, "A URL do IdP SSO deve utilizar HTTPS (exceto no loopback)."
+    if not idp_cert:
+        return False, "O certificado X.509 do IdP é obrigatório."
+
+    cert_limpo = idp_cert.replace("-----BEGIN CERTIFICATE-----", "").replace("-----END CERTIFICATE-----", "").strip()
+    cert_limpo = "".join(cert_limpo.split())
+    if len(cert_limpo) < 64:
+        return False, "Certificado X.509 parece truncado ou inválido."
+
+    try:
+        base64.b64decode(cert_limpo, validate=True)
+    except Exception:
+        return False, "Certificado X.509 em formato inválido (base64 inválido)."
+
+    if not saml_disponivel():
+        return False, "A biblioteca python3-saml não está instalada nesta imagem."
+
+    try:
+        base = (base_url or "https://localhost").rstrip("/")
+        cfg_teste = ConfiguracaoSSO(
+            provedor="saml",
+            saml_habilitado=True,
+            base_url=base,
+            idp_entity_id=idp_entity_id,
+            idp_sso_url=idp_sso_url,
+            idp_cert=cert_limpo,
+            dominios=("exemplo.com",),
+        )
+        xml_sp = metadata_do_sp(cfg_teste)
+        if not xml_sp or ("<md:EntityDescriptor" not in xml_sp and "<EntityDescriptor" not in xml_sp):
+            return False, "Falha ao gerar metadados do Service Provider (SP)."
+    except Exception as e:
+        return False, f"Falha na validação SAML2: {e}"
+
+    return True, "Parâmetros e certificado do SAML 2.0 validados com sucesso!"
+
+testa_conexao_saml = testar_conexao_saml
+
+
+# ---------------------------------------------------------------------------
+# Ligação com as rotas deste painel
+# ---------------------------------------------------------------------------
+
+_grava_segredo_no_arquivo = grava_segredo
+
+PROVEDORES = ("", "oidc", "saml", "both", "all")
+ROTA_CALLBACK = ROTA_OIDC_CALLBACK
+
+
+def caminho_do_segredo(base_dir: str) -> str:
+    """O arquivo do segredo, ao lado da credencial de recuperação."""
+    return os.path.join(base_dir or ".", ARQUIVO_DO_SEGREDO)
+
+
+def segredo_vem_do_ambiente() -> bool:
+    """A tela trava o campo quando o ambiente manda, como já faz com a senha."""
+    return bool(segredo_do_ambiente())
+
+
+def ler_segredo(caminho_ou_dir: str):
+    """O segredo em vigor, ou vazio. Aceita arquivo ou diretório."""
+    if not caminho_ou_dir:
+        return ("", False) if caminho_ou_dir is not None else ""
+    if os.path.isdir(caminho_ou_dir) or not os.path.basename(caminho_ou_dir).endswith(ARQUIVO_DO_SEGREDO):
+        caminho = caminho_do_segredo(caminho_ou_dir) if os.path.isdir(caminho_ou_dir) else caminho_ou_dir
+        return _le_segredo(caminho)[0]
+    return _le_segredo(caminho_ou_dir)
+
+
+def grava_segredo(caminho_ou_dir: str, valor: str) -> bool:
+    """Grava o segredo 0600 no diretório ou arquivo dado. False quando o disco recusa."""
+    if not caminho_ou_dir:
+        return False
+    if os.path.isdir(caminho_ou_dir) or not os.path.basename(caminho_ou_dir).endswith(ARQUIVO_DO_SEGREDO):
+        caminho = caminho_do_segredo(caminho_ou_dir)
+    else:
+        caminho = caminho_ou_dir
+    return _grava_segredo_no_arquivo(caminho, str(valor or "").strip())
+
+
+def normaliza_base_url(url: str) -> str:
+    return str(url or "").strip().rstrip("/")
+
+
+def url_segura(url: str) -> bool:
+    """Aceita `https` em qualquer lugar e `http` apenas no loopback."""
+    return _transporte_seguro(url)
+
+
+def base_url_valida(url: str) -> bool:
+    """Origem pública EXATA: esquema e host, sem caminho, sem consulta."""
+    if not url:
+        return False
+    partes = urllib.parse.urlsplit(str(url).strip())
+    if partes.scheme not in ("http", "https"):
+        return False
+    if not partes.netloc:
+        return False
+    if partes.path not in ("", "/") or partes.query or partes.fragment:
+        return False
+    return url_segura(url)
+
+
+def redirect_uri(config: Dict[str, object]) -> str:
+    """SEMPRE da configuração, JAMAIS do cabeçalho `Host`."""
+    return str(config.get("base_url") or "").rstrip("/") + ROTA_OIDC_CALLBACK
+
+
+def nome_do_provedor(config: Optional[Dict[str, object]]) -> str:
+    """Como o botão da tela de login chama o provedor."""
+    if not config:
+        return ""
+    if config.get("oidc_issuer") or config.get("issuer"):
+        origem = str(config.get("issuer") or config.get("oidc_issuer") or "")
+        return urllib.parse.urlsplit(origem).hostname or origem
+    if config.get("idp_sso_url") or config.get("idp_entity_id"):
+        origem = str(config.get("idp_sso_url") or config.get("idp_entity_id") or "")
+        return urllib.parse.urlsplit(origem).hostname or origem
+    return ""
+
+
+def ler_configuracao(prefs_path: str) -> Dict[str, str]:
+    """Tudo o que a tela precisa mostrar. NUNCA inclui o segredo do cliente."""
+    from .prefs import get_preference
+
+    def ler(chave: str, padrao: str = "") -> str:
+        return (get_preference(prefs_path, chave, padrao) or "").strip()
+
+    prov = ler(CHAVE_PROVEDOR).lower()
+    senha_hab = "1" if ler(CHAVE_SENHA_HABILITADA, "1") != "0" else "0"
+    oidc_hab = "1" if ler(CHAVE_OIDC_HABILITADO, "1" if prov in ("oidc", "both", "all") else "0") == "1" else "0"
+    saml_hab = "1" if ler(CHAVE_SAML_HABILITADO, "1" if prov in ("saml", "both", "all") else "0") == "1" else "0"
+
+    base_url = ler(CHAVE_BASE_URL).rstrip("/")
+    issuer = ler(CHAVE_OIDC_ISSUER).rstrip("/")
+    client_id = ler(CHAVE_OIDC_CLIENT_ID)
+    scopes = ler(CHAVE_OIDC_SCOPES) or ESCOPOS_PADRAO
+    idp_entity = ler(CHAVE_SAML_IDP_ENTITY_ID)
+    idp_sso = ler(CHAVE_SAML_IDP_SSO_URL)
+    idp_cert = ler(CHAVE_SAML_IDP_CERT)
+
+    return {
+        "enabled": prov,
+        "password_enabled": senha_hab,
+        "oidc_enabled": oidc_hab,
+        "saml_enabled": saml_hab,
+        "base_url": base_url,
+        "issuer": issuer,
+        "oidc_issuer": issuer,
+        "client_id": client_id,
+        "oidc_client_id": client_id,
+        "scopes": scopes,
+        "oidc_scopes": scopes,
+        "idp_entity_id": idp_entity,
+        "saml_idp_entity_id": idp_entity,
+        "idp_sso_url": idp_sso,
+        "saml_idp_sso_url": idp_sso,
+        "idp_cert": idp_cert,
+        "saml_idp_cert": idp_cert,
+        "allowed_domains": ler(CHAVE_DOMINIOS),
+        "allowed_emails": ler(CHAVE_EMAILS),
+        "updated_at": ler(CHAVE_ATUALIZADO_EM),
+    }
+
+
+ler_config = ler_configuracao
+
+
+def grava_configuracao(prefs_path: str, campos: Dict[str, str]) -> bool:
+    """Grava a configuração não sensível. O segredo tem caminho próprio."""
+    senha_hab = "1" if str(campos.get("password_enabled", "1")).strip() in ("1", "true", "on", "yes") else "0"
+
+    prov_in = str(campos.get("enabled", "")).strip().lower()
+    if "oidc_enabled" in campos:
+        oidc_hab = "1" if str(campos.get("oidc_enabled", "")).strip() in ("1", "true", "on", "yes") else "0"
+    else:
+        oidc_hab = "1" if prov_in in ("oidc", "both", "all") else "0"
+
+    if "saml_enabled" in campos:
+        saml_hab = "1" if str(campos.get("saml_enabled", "")).strip() in ("1", "true", "on", "yes") else "0"
+    else:
+        saml_hab = "1" if prov_in in ("saml", "both", "all") else "0"
+
+    if prov_in == "":
+        if "oidc_enabled" not in campos and "saml_enabled" not in campos:
+            oidc_hab = "0"
+            saml_hab = "0"
+
+    if oidc_hab == "1" and saml_hab == "1":
+        prov = "both"
+    elif oidc_hab == "1":
+        prov = "oidc"
+    elif saml_hab == "1":
+        prov = "saml"
+    else:
+        prov = ""
+
+    idp_entity = (campos.get("idp_entity_id") or campos.get("saml_idp_entity_id") or "").strip()
+    idp_sso = (campos.get("idp_sso_url") or campos.get("saml_idp_sso_url") or "").strip()
+    idp_cert = (campos.get("idp_cert") or campos.get("saml_idp_cert") or "").strip()
+
+    return gravar(prefs_path, {
+        CHAVE_PROVEDOR: prov,
+        CHAVE_SENHA_HABILITADA: senha_hab,
+        CHAVE_OIDC_HABILITADO: oidc_hab,
+        CHAVE_SAML_HABILITADO: saml_hab,
+        CHAVE_BASE_URL: normaliza_base_url(campos.get("base_url", "")),
+        CHAVE_OIDC_ISSUER: normaliza_base_url(campos.get("issuer", "") or campos.get("oidc_issuer", "")),
+        CHAVE_OIDC_CLIENT_ID: (campos.get("client_id") or campos.get("oidc_client_id") or "").strip(),
+        CHAVE_OIDC_SCOPES: (campos.get("scopes") or campos.get("oidc_scopes") or "").strip() or ESCOPOS_PADRAO,
+        CHAVE_SAML_IDP_ENTITY_ID: idp_entity,
+        CHAVE_SAML_IDP_SSO_URL: idp_sso,
+        CHAVE_SAML_IDP_CERT: idp_cert,
+        CHAVE_DOMINIOS: campos.get("allowed_domains", ""),
+        CHAVE_EMAILS: campos.get("allowed_emails", ""),
+    })
+
+
+grava_config = grava_configuracao
+
+
+def problemas_da_configuracao(campos: Dict[str, str], tem_segredo: bool) -> Tuple[str, ...]:
+    """Chaves de tradução do que impede LIGAR o SSO OIDC."""
+    problemas = []
+    if not base_url_valida(campos.get("base_url", "")):
+        problemas.append("sso.need_base_url")
+    if not str(campos.get("issuer", "")).strip() or not url_segura(campos.get("issuer", "")):
+        problemas.append("sso.need_issuer")
+    if not str(campos.get("client_id", "")).strip():
+        problemas.append("sso.need_client_id")
+    if not tem_segredo:
+        problemas.append("sso.need_secret")
+    if not lista_de(campos.get("allowed_domains", "")) and not lista_de(
+        campos.get("allowed_emails", "")
+    ):
+        problemas.append("sso.need_allowlist")
+    return tuple(problemas)
+
+
+def problemas_do_saml(campos: Dict[str, str]) -> Tuple[str, ...]:
+    """Chaves de tradução do que impede LIGAR o SSO SAML2."""
+    problemas = []
+    if not base_url_valida(campos.get("base_url", "")):
+        problemas.append("sso.need_base_url")
+    if not str(campos.get("idp_entity_id", "")).strip():
+        problemas.append("sso.save_refused_fields")
+    if not str(campos.get("idp_sso_url", "")).strip() or not url_segura(campos.get("idp_sso_url", "")):
+        problemas.append("sso.save_refused_fields")
+    if not str(campos.get("idp_cert", "")).strip():
+        problemas.append("sso.save_refused_fields")
+    if not saml_disponivel():
+        problemas.append("sso.save_refused_saml")
+    if not lista_de(campos.get("allowed_domains", "")) and not lista_de(
+        campos.get("allowed_emails", "")
+    ):
+        problemas.append("sso.need_allowlist")
+    return tuple(problemas)
+
+
+def configuracao_efetiva(prefs_path: str, base_dir: str) -> Optional[Dict[str, object]]:
+    """A configuração que o fluxo usa, ou None quando o SSO não deve funcionar."""
+    if desligado_por_ambiente():
+        return None
+
+    campos = ler_configuracao(prefs_path)
+    prov = campos.get("enabled", "")
+    oidc_ativo = campos.get("oidc_enabled") == "1" or prov in ("oidc", "both", "all")
+    saml_ativo = campos.get("saml_enabled") == "1" or prov in ("saml", "both", "all")
+
+    if not oidc_ativo and not saml_ativo:
+        return None
+
+    segredo = ler_segredo(base_dir) if base_dir else ""
+    oidc_valido = bool(oidc_ativo and not problemas_da_configuracao(campos, bool(segredo)))
+    saml_valido = bool(saml_ativo and not problemas_do_saml(campos))
+
+    if not oidc_valido and not saml_valido:
+        return None
+
+    return {
+        "enabled": prov,
+        "password_enabled": campos.get("password_enabled") != "0",
+        "oidc_enabled": oidc_valido,
+        "saml_enabled": saml_valido,
+        "base_url": normaliza_base_url(campos.get("base_url", "")),
+        "issuer": normaliza_base_url(campos.get("issuer", "")),
+        "oidc_issuer": normaliza_base_url(campos.get("issuer", "")),
+        "client_id": campos.get("client_id", ""),
+        "client_secret": segredo,
+        "scopes": campos.get("scopes", "") or ESCOPOS_PADRAO,
+        "idp_entity_id": campos.get("idp_entity_id", ""),
+        "idp_sso_url": campos.get("idp_sso_url", ""),
+        "idp_cert": campos.get("idp_cert", ""),
+        "allowed_domains": campos.get("allowed_domains", ""),
+        "allowed_emails": campos.get("allowed_emails", ""),
+    }
+
+
+def _para_bool(val: Any, padrao: bool = False) -> bool:
+    if val is None:
+        return padrao
+    if isinstance(val, bool):
+        return val
+    s = str(val).strip().lower()
+    if s in ("1", "true", "on", "yes"):
+        return True
+    if s in ("0", "false", "off", "no", ""):
+        return False
+    return padrao
+
+
+def _configuracao_de(config: Dict[str, object]) -> ConfiguracaoSSO:
+    """O dicionário que as rotas carregam, no formato do núcleo."""
+    def campo(*nomes: str) -> str:
+        for nome in nomes:
+            valor = str(config.get(nome) or "").strip()
+            if valor:
+                return valor
+        return ""
+
+    prov = str(config.get("enabled", "")).strip().lower()
+
+    if "oidc_enabled" in config:
+        oidc_hab = _para_bool(config.get("oidc_enabled"))
+    else:
+        oidc_hab = prov in ("oidc", "both", "all")
+
+    if "saml_enabled" in config:
+        saml_hab = _para_bool(config.get("saml_enabled"))
+    else:
+        saml_hab = prov in ("saml", "both", "all")
+
+    if "password_enabled" in config:
+        senha_hab = _para_bool(config.get("password_enabled"), padrao=True)
+    else:
+        senha_hab = True
+
+    if prov == "" and "oidc_enabled" not in config and "saml_enabled" not in config:
+        oidc_hab = False
+        saml_hab = False
+
+    return ConfiguracaoSSO(
+        provedor=prov,
+        oidc_habilitado=oidc_hab,
+        saml_habilitado=saml_hab,
+        senha_habilitada=senha_hab,
+        base_url=campo("base_url").rstrip("/"),
+        issuer=campo("issuer", "oidc_issuer").rstrip("/"),
+        client_id=campo("client_id", "oidc_client_id"),
+        escopos=campo("scopes", "oidc_scopes") or ESCOPOS_PADRAO,
+        idp_entity_id=campo("idp_entity_id", "saml_idp_entity_id"),
+        idp_sso_url=campo("idp_sso_url", "saml_idp_sso_url"),
+        idp_cert=campo("idp_cert", "saml_idp_cert"),
+        dominios=lista_de(campo("allowed_domains")),
+        emails=lista_de(campo("allowed_emails")),
+        tem_segredo=bool(config.get("client_secret")),
+    )
+
+
+def limpa_cache_descoberta() -> None:
+    """Zera o documento memorizado. O emissor pode ter mudado na tela."""
+    esquece_descobertas()
+
+
+esquece_descoberta = limpa_cache_descoberta
+
+
+def descobre(issuer: str, agora: Optional[float] = None) -> Optional[Dict[str, object]]:
+    """O documento do emissor, ou None quando ele não responde. Levanta ErroDeSSO se o emissor for inseguro."""
+    if not _transporte_seguro(issuer):
+        raise FalhaDeSSO("o emissor precisa de HTTPS fora do loopback")
+    try:
+        return descobrir(issuer, agora=agora)
+    except FalhaDeSSO:
+        return None
+
+
+def url_de_autorizacao(
+    arg1: Any,
+    arg2: Any,
+    state: str,
+    nonce: str,
+    desafio_ou_verificador: str,
+) -> str:
+    """Para onde mandamos o navegador. O `redirect_uri` sai da configuração."""
+    if isinstance(arg1, dict) and "authorization_endpoint" in arg1:
+        doc = arg1
+        cfg = _configuracao_de(arg2) if isinstance(arg2, dict) else arg2
+        desafio = desafio_de(desafio_ou_verificador)
+    elif isinstance(arg2, dict) and "authorization_endpoint" in arg2:
+        doc = arg2
+        cfg = _configuracao_de(arg1) if isinstance(arg1, dict) else arg1
+        desafio = desafio_ou_verificador
+    elif isinstance(arg1, ConfiguracaoSSO):
+        cfg = arg1
+        doc = arg2
+        desafio = desafio_ou_verificador
+    else:
+        cfg = _configuracao_de(arg2) if isinstance(arg2, dict) else arg2
+        doc = arg1
+        desafio = desafio_ou_verificador
+
+    destino = str(doc.get("authorization_endpoint") if isinstance(doc, dict) else getattr(doc, "authorization_endpoint", "") or "")
+    juncao = "&" if "?" in destino else "?"
+    return destino + juncao + urllib.parse.urlencode(
+        parametros_de_autorizacao(cfg, state, nonce, desafio)
+    )
+
+
+def conclui_login(*, config: Dict[str, object], estado: Optional[Dict[str, str]],
+                  parametros: Dict[str, str],
+                  agora: Optional[float] = None) -> Tuple[str, str]:
+    """Valida a volta do provedor. Devolve (email, motivo_da_recusa)."""
+    alvo = _configuracao_de(config)
+    try:
+        if not estado or not estado.get("state"):
+            raise FalhaDeSSO("cookie de estado ausente ou corrompido")
+        if not mesmo_texto(str(parametros.get("state") or ""), str(estado["state"])):
+            raise FalhaDeSSO("state diferente do gravado no cookie")
+        if estado_ja_usado(str(estado["state"]), agora):
+            raise FalhaDeSSO("state já gasto: volta repetida")
+        if parametros.get("error"):
+            raise FalhaDeSSO("o provedor devolveu erro na autorização")
+        codigo = str(parametros.get("code") or "").strip()
+        if not codigo:
+            raise FalhaDeSSO("code ausente na volta do provedor")
+
+        documento = descobrir(alvo.issuer, agora=agora)
+        tokens = troca_o_code(
+            documento, alvo, str(config.get("client_secret") or ""), codigo,
+            str(estado.get("verificador") or ""),
+        )
+        payload = decodifica_payload(tokens["id_token"])
+        confere_id_token(payload, alvo, str(estado.get("nonce") or ""), agora=agora)
+        email = email_do_userinfo(busca_userinfo(documento, tokens["access_token"]), payload)
+        if not email_autorizado(email, alvo):
+            raise FalhaDeSSO("e-mail fora da lista de permissão")
+    except FalhaDeSSO as erro:
+        return "", erro.detalhe
+    return email, ""
+
+
+# Aliases para convergência de chamadas entre os painéis
+def resolve_client_secret(caminho_ou_dir: str) -> str:
+    """Retorna apenas o segredo como string, lido do arquivo ou diretório."""
+    if not caminho_ou_dir:
+        return ""
+    if os.path.isdir(caminho_ou_dir):
+        caminho = caminho_do_segredo(caminho_ou_dir)
+    else:
+        caminho = caminho_ou_dir
+    return _le_segredo(caminho)[0]
+
+
+def tem_client_secret(base_dir: str) -> bool:
+    return bool(resolve_client_secret(base_dir))
+
+
+grava_client_secret = grava_segredo
+
+
+def allowlist_esta_vazia(config: Dict[str, object]) -> bool:
+    return not lista_de(str(config.get("allowed_domains") or "")) and not lista_de(
+        str(config.get("allowed_emails") or "")
+    )
+
+
+def oidc_esta_completo(config: Dict[str, object], arquivo_do_segredo: str) -> bool:
+    c = _configuracao_de(config)
+    c.tem_segredo = bool(resolve_client_secret(arquivo_do_segredo))
+    return c.oidc_esta_ligado()
+
+
+def provedor_ativo(config: Dict[str, object], arquivo_do_segredo: str) -> str:
+    if desligado_por_ambiente():
+        return ""
+    if not config:
+        return ""
+    c = _configuracao_de(config)
+    c.tem_segredo = bool(resolve_client_secret(arquivo_do_segredo))
+    if c.oidc_esta_ligado() and c.saml_esta_ligado():
+        return "both"
+    if c.oidc_esta_ligado():
+        return "oidc"
+    if c.saml_esta_ligado():
+        return "saml"
+    return ""
+
+
+def novo_desafio_pkce() -> Tuple[str, str]:
+    verificador = novo_verificador()
+    return verificador, desafio_de(verificador)
+
+
+def consome_estado(state: str, agora: Optional[float] = None) -> bool:
+    return not estado_ja_usado(state, agora)
+
+
+def conclui_callback(
+    config: Dict[str, object],
+    arquivo_do_segredo: str,
+    state_da_query: str,
+    codigo: str,
+    erro_da_query: str,
+    cookie_de_estado: str,
+    agora: Optional[float] = None,
+) -> str:
+    from . import sessao
+    estado = sessao.ler_estado_sso(cookie_de_estado, agora=agora) if cookie_de_estado else None
+    params = {"state": state_da_query, "code": codigo}
+    if erro_da_query:
+        params["error"] = erro_da_query
+    email, motivo = conclui_login(config=config, estado=estado, parametros=params, agora=agora)
+    if not email:
+        raise FalhaDeSSO(motivo)
+    return email
+
+
+desligado_pelo_ambiente = desligado_por_ambiente
+ErroDeSSO = FalhaDeSSO
+

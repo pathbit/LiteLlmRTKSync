@@ -19,6 +19,8 @@ RAIZ = pathlib.Path(__file__).resolve().parent.parent
 FONTE = RAIZ / "src" / "litellm_rtksync"
 CATALOGO = FONTE / "i18n.py"
 
+LOCALES = FONTE / "locales"
+
 # translate("chave.literal", ...) — só o primeiro argumento, e só quando é
 # string literal. f-strings e variáveis não casam, que é o que se quer.
 USO_LITERAL = re.compile(r'translate\(\s*"([a-z0-9_]+(?:\.[a-z0-9_]+)+)"')
@@ -26,6 +28,10 @@ DECLARACAO = re.compile(r'^\s*"([a-z0-9_]+(?:\.[a-z0-9_]+)+)"\s*:', re.M)
 
 
 def chaves_declaradas():
+    if LOCALES.is_dir():
+        en_json = LOCALES / "en.json"
+        if en_json.is_file():
+            return set(DECLARACAO.findall(en_json.read_text(encoding="utf-8")))
     return set(DECLARACAO.findall(CATALOGO.read_text(encoding="utf-8")))
 
 
@@ -54,11 +60,18 @@ class NenhumaChaveCruaNaTela(unittest.TestCase):
 
     def test_os_tres_idiomas_declaram_o_mesmo_conjunto(self):
         """Faltar num idioma é o mesmo defeito, visível só para quem usa aquele idioma."""
-        texto = CATALOGO.read_text(encoding="utf-8")
-        # Cada bloco de idioma começa numa linha do tipo `"en": {`
-        blocos = re.split(r'^\s*"(?:en|pt|es)"\s*:\s*\{', texto, flags=re.M)[1:]
-        self.assertEqual(len(blocos), 3, "esperava três blocos de idioma no catálogo")
-        conjuntos = [set(DECLARACAO.findall(b)) for b in blocos]
+        if LOCALES.is_dir():
+            conjuntos = []
+            for lang in ("en", "pt", "es"):
+                arq = LOCALES / f"{lang}.json"
+                self.assertTrue(arq.is_file(), f"falta catálogo {lang}.json")
+                conjuntos.append(set(DECLARACAO.findall(arq.read_text(encoding="utf-8"))))
+        else:
+            texto = CATALOGO.read_text(encoding="utf-8")
+            # Cada bloco de idioma começa numa linha do tipo `"en": {`
+            blocos = re.split(r'^\s*"(?:en|pt|es)"\s*:\s*\{', texto, flags=re.M)[1:]
+            self.assertEqual(len(blocos), 3, "esperava três blocos de idioma no catálogo")
+            conjuntos = [set(DECLARACAO.findall(b)) for b in blocos]
         for i, outro in enumerate(conjuntos[1:], start=1):
             faltando = conjuntos[0] - outro
             sobrando = outro - conjuntos[0]
