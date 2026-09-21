@@ -52,6 +52,7 @@ IDENTICOS = (
     "prefs.py",
     "protecao.py",
     "sessao.py",
+    "sso.py",
 )
 
 # Módulos que AINDA divergem, com o teto medido em 13/09/2026. A convergência
@@ -91,10 +92,8 @@ IDENTICOS = (
 # `web.py`, entao sao quatro. A convergencia completa desse ponto e mover a
 # leitura para `gateway.py`, e isso continua em aberto.
 TETOS_DE_DIVERGENCIA = {
-    "i18n.py": 0,
     "models.py": 7,
     "render.py": 862,
-    "sso.py": 328,
     "web.py": 689,
 }
 

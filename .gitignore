@@ -226,6 +226,7 @@ __marimo__/
 *.sqlite-shm
 .dashboard_recovery
 .dashboard_auth.json
+.sso_client_secret
 *.log
 logs/
 # Clone do upstream para leitura.
