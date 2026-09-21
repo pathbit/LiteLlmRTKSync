@@ -37,6 +37,7 @@ jobs:
           pip install --upgrade pip
           pip install .
           litellmrtksync --help
+          LiteLlmRTKSync --help
 
   docker-validation:
     name: Validate Docker Image Build & Testcontainers

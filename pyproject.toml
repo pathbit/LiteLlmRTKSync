@@ -46,6 +46,8 @@ Issues = "https://github.com/pathbit/LiteLlmRTKSync/issues"
 [project.scripts]
 litellmrtksync = "litellm_rtksync.cli:main"
 litellm-rtksync = "litellm_rtksync.cli:main"
+LiteLlmRTKSync = "litellm_rtksync.cli:main"
+LiteLLMRTKSync = "litellm_rtksync.cli:main"
 
 [tool.setuptools.packages.find]
 where = ["src"]

@@ -5,6 +5,8 @@ on:
     branches: ["master"]
     paths:
       - "src/**"
+      - "Dockerfile"
+      - "pyproject.toml"
     tags: ["v*.*.*"]
   workflow_dispatch:
 
@@ -39,6 +41,7 @@ jobs:
           pip install --upgrade pip
           pip install .
           litellmrtksync --help
+          LiteLlmRTKSync --help
 
   build-and-push-docker:
     name: Build and Push Multi-Arch Docker Image (x86_64 and arm64)
@@ -117,7 +120,7 @@ jobs:
           token: ${{ secrets.GITHUB_TOKEN }}
           owner: ${{ github.repository_owner }}
           packages: litellmrtksync
-          keep-n-tagged: 3
+          keep-n-tagged: 2
           exclude-tags: latest
           delete-untagged: true
           delete-ghost-images: true
