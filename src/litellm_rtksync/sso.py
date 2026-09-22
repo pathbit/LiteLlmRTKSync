@@ -1034,7 +1034,7 @@ def testar_conexao_oidc(issuer: str, client_id: str = "", client_secret: str = "
         if not _transporte_seguro(val):
             return False, f"Endpoint '{endpoint}' não utiliza HTTPS."
 
-    return True, f"Conexão OIDC validada com sucesso! Endpoints encontrados."
+    return True, "Conexão OIDC validada com sucesso! Endpoints encontrados."
 
 testa_conexao_oidc = testar_conexao_oidc
 

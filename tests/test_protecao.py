@@ -5,8 +5,6 @@ precisa — e o túnel é um botão que o operador aperta quando quiser, então 
 freio tem de já estar instalado quando ele apertar.
 """
 
-import hashlib
-import time
 import unittest
 
 from litellm_rtksync import protecao

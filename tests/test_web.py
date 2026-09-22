@@ -12,7 +12,6 @@ As mesmas regras dos projetos irmãos, porque foram aprendidas do mesmo jeito:
 """
 
 import base64
-import os
 import re
 import tempfile
 import time

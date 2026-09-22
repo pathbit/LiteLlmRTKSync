@@ -93,8 +93,8 @@ IDENTICOS = (
 # leitura para `gateway.py`, e isso continua em aberto.
 TETOS_DE_DIVERGENCIA = {
     "models.py": 7,
-    "render.py": 862,
-    "web.py": 689,
+    "render.py": 560,
+    "web.py": 578,
 }
 
 # O que cada produto troca de propósito, e que não conta como divergência.

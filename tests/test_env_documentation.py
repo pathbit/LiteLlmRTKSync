@@ -9,7 +9,6 @@ Este teste compara os dois conjuntos e falha nomeando a diferenca, entao a
 defasagem aparece no CI em vez de aparecer em producao.
 """
 
-import os
 import pathlib
 import re
 import unittest

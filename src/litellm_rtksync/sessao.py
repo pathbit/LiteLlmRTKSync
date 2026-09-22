@@ -18,7 +18,6 @@ container recriado.
 import base64
 import hashlib
 import hmac
-import os
 import secrets
 import time
 from typing import Optional

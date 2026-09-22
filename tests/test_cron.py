@@ -70,9 +70,9 @@ class TestAgendador(unittest.TestCase):
         linhas = cron.trigger_now()["log"]
         # Só o que tem ação entra: a chave sem achado não polui o histórico.
         self.assertEqual(len(linhas), 2)
-        self.assertTrue(any("limit · producao" in l for l in linhas), linhas)
-        self.assertTrue(any("model · gpt-4o" in l for l in linhas), linhas)
-        self.assertTrue(any("acima do teto" in l for l in linhas), linhas)
+        self.assertTrue(any("limit · producao" in line for line in linhas), linhas)
+        self.assertTrue(any("model · gpt-4o" in line for line in linhas), linhas)
+        self.assertTrue(any("acima do teto" in line for line in linhas), linhas)
 
     def test_a_partial_read_failure_reaches_the_history_with_its_reason(self):
         """`errors` é uma lista: uma rota fora do ar não derruba o ciclo inteiro."""
@@ -83,7 +83,7 @@ class TestAgendador(unittest.TestCase):
         self.assertFalse(entrada["success"])
         self.assertIn("modelos: HTTP 404", entrada["error"])
         self.assertIn("times: timeout", entrada["error"])
-        self.assertTrue(any("ERRO: modelos: HTTP 404" in l for l in entrada["log"]))
+        self.assertTrue(any("ERRO: modelos: HTTP 404" in line for line in entrada["log"]))
 
     def test_a_callback_that_raises_becomes_a_failed_cycle_not_a_dead_scheduler(self):
         def ciclo_que_explode():

@@ -211,7 +211,7 @@ def registrar(api: AdminAPI, escrever: bool = True) -> int:
         chave = os.environ.get(gw["env_var"], "")
         if not chave:
             log(f"  ! {gw['env_var']} não está no ambiente — este gateway fica de fora.")
-            log(f"    A chave sai do painel do gateway (POST /api/keys) e mora no .env.")
+            log("    A chave sai do painel do gateway (POST /api/keys) e mora no .env.")
             continue
         log(f"  chave {gw['env_var']} = {mascara(chave)}")
 
@@ -401,7 +401,7 @@ def testar(api: AdminAPI) -> int:
             log(f"  ✗ CREDENCIAL: {estado_da_chave}")
             falhas += 1
             continue
-        log(f"  ✓ credencial aceita pelo gateway (/v1/models)")
+        log("  ✓ credencial aceita pelo gateway (/v1/models)")
         try:
             r = api.request("POST", "/v1/chat/completions", {
                 "model": gw["model_name"],

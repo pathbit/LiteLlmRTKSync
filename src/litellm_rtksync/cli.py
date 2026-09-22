@@ -47,7 +47,7 @@ def imprimir_status(settings: Settings) -> int:
         print(f"  {chave.alias[:25]:<26} {(chave.team_id or '-')[:17]:<18} "
               f"{chave.health_status(settings.refresh_margin):<14} {validade}")
 
-    print(f"\n[*] Resumo: " + ", ".join(f"{v} {k}" for k, v in resumo.items() if v))
+    print("\n[*] Resumo: " + ", ".join(f"{v} {k}" for k, v in resumo.items() if v))
     print(f"[*] Times: {len(times)}   Modelos cadastrados: {len(modelos)}")
 
     relatorio = avaliar(chaves, times, settings.platform_caps())
