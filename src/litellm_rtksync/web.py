@@ -23,20 +23,17 @@ import base64
 import json
 import os
 import re
-import secrets
 import sys
 import threading
 import time
-import urllib.error
-import urllib.request
 from http import HTTPStatus
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
-from typing import Any, Callable, Dict, List, Optional
+from typing import Any, Dict, List, Optional
 from urllib.parse import parse_qs, urlencode, urlparse
 
 from .config import Settings
 from .i18n import DEFAULT_LANGUAGE, LANGUAGES, normalize_language, translate
-from .identidade import NOME_DO_GATEWAY, NOME_DO_PRODUTO
+from .identidade import NOME_DO_PRODUTO
 from .logs import get_logger
 from .prefs import get_preference, set_preference
 from . import protecao, sessao, sso

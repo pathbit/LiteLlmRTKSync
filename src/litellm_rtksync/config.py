@@ -1,16 +1,12 @@
 """Configuração deste sincronizador, toda por variável de ambiente."""
 
 import os
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from typing import Optional, Tuple
 
 from .identidade import PREFIXO_DE_CONTAINER
 from .auth import (
-    AUTH_PASSWORD_KEY,
-    AUTH_USER_KEY,
-    derive_recovery_hash,
     ensure_recovery_hash,
-    hash_password,
     read_db_credentials,
     resolve_recovery_hash,
     validate_password_strength,
