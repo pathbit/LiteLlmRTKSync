@@ -30,6 +30,7 @@
   "auth.logged_out": "You have signed out successfully.",
   "auth.login_failed": "Wrong user or password.",
   "auth.login_intro": "Sign in to see the panel.",
+  "auth.login_title": "Dashboard Access",
   "auth.logout": "Sign out",
   "auth.min_chars": "Minimum of 4 characters.",
   "auth.new_password": "New password",

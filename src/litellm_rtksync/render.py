@@ -609,13 +609,12 @@ def render_login_page(
     <main class="card shadow-sm" style="max-width:26rem;width:100%">
       <div class="card-body p-4">
         <div class="d-flex align-items-center gap-3 mb-3">
-          <span class="brand-mark"><i class="bi {ICONE_DO_PRODUTO}" aria-hidden="true"></i></span>
+          <span class="brand-mark"><i class="bi bi-key-fill" aria-hidden="true"></i></span>
           <div>
-            <h2 class="h5 mb-0 fw-bold">{NOME_DO_PRODUTO}</h2>
-            <span class="text-secondary small font-monospace">{NOME_DO_GATEWAY}</span>
+            <h2 class="h5 mb-0 fw-bold">{esc(translate("auth.login_title", lang))}</h2>
+            <span class="text-secondary small">{esc(translate("auth.login_intro", lang))}</span>
           </div>
         </div>
-        <p class="text-secondary small mb-3">{esc(translate("auth.login_intro", lang))}</p>
         {info_html}
         {aviso}
         {form_html}

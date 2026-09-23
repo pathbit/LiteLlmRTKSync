@@ -30,6 +30,7 @@
   "auth.logged_out": "Sesión cerrada con éxito.",
   "auth.login_failed": "Usuario o contraseña incorrectos.",
   "auth.login_intro": "Entre para ver el panel.",
+  "auth.login_title": "Acceso al panel",
   "auth.logout": "Salir",
   "auth.min_chars": "Mínimo de 4 caracteres.",
   "auth.new_password": "Nueva contraseña",
