@@ -444,6 +444,21 @@ class DashboardHandler(BaseHTTPRequestHandler):
         self.send_header("Content-Type", "text/html; charset=utf-8")
         self.send_header("Content-Length", str(len(corpo)))
         self.send_header("Cache-Control", "no-store")
+        query = parse_qs(urlparse(self.path).query)
+        if "lang" in query and query["lang"]:
+            lang = normalize_language(query["lang"][0])
+            if lang in LANGUAGES:
+                seguro = self.eh_conexao_segura()
+                s = "; Secure" if seguro else ""
+                self.send_header(
+                    "Set-Cookie",
+                    f"rtksync_lang={lang}; Path=/; Max-Age=31536000; SameSite=Lax{s}",
+                )
+                if self.settings and getattr(self, "authenticated_user", None):
+                    try:
+                        set_preference(self.prefs_path(), "language", lang)
+                    except Exception:
+                        pass
         self.end_headers()
         self.write_body(corpo)
 
