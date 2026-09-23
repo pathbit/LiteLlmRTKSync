@@ -196,7 +196,7 @@ def script_de_idioma() -> str:
   <script>
   (function() {
     try {
-      var salvo = localStorage.getItem('rtksync_lang') || sessionStorage.getItem('rtksync_lang');
+      var salvo = sessionStorage.getItem('rtksync_lang') || localStorage.getItem('rtksync_lang');
       var atual = document.documentElement.lang;
       if (salvo && ['en', 'pt', 'es'].indexOf(salvo) !== -1) {
         document.cookie = 'rtksync_lang=' + encodeURIComponent(salvo) + '; path=/; max-age=31536000; SameSite=Lax';
@@ -210,8 +210,8 @@ def script_de_idioma() -> str:
   })();
   function setRtksyncLang(lang) {
     try {
-      localStorage.setItem('rtksync_lang', lang);
       sessionStorage.setItem('rtksync_lang', lang);
+      localStorage.setItem('rtksync_lang', lang);
       document.cookie = 'rtksync_lang=' + encodeURIComponent(lang) + '; path=/; max-age=31536000; SameSite=Lax';
     } catch(e) {}
     var u = new URL(window.location.href);
@@ -584,16 +584,34 @@ def render_login_page(
     .form-control {{ background: var(--bg); border-color: var(--line); color: var(--text); }}
     .form-control:focus {{ background: var(--bg); color: var(--text);
                            border-color: var(--accent); box-shadow: 0 0 0 .2rem color-mix(in srgb, var(--accent) 25%, transparent); }}
+    .barra-acoes {{ display: flex; align-items: center; gap: .5rem; }}
+    .barra-acoes .btn {{ height: 2rem; padding: 0 .65rem; display: inline-flex; align-items: center; }}
+    .dropdown-menu {{ background: var(--surface); border: 1px solid var(--line); }}
+    .dropdown-item {{ color: var(--text); }}
+    .dropdown-item:hover, .dropdown-item:focus {{ background: var(--surface-2); color: var(--text); }}
+    .dropdown-item.active {{ background: var(--accent); color: var(--bg); }}
   </style>
 </head>
 <body class="d-flex flex-column min-vh-100 justify-content-between">
+  <header class="d-flex align-items-center justify-content-between px-3 px-sm-4 py-3 border-bottom" style="border-color: var(--line) !important;">
+    <div class="d-flex align-items-center gap-3">
+      <span class="brand-mark"><i class="bi {ICONE_DO_PRODUTO}" aria-hidden="true"></i></span>
+      <div>
+        <h1 class="h5 mb-0 fw-bold">{NOME_DO_PRODUTO}</h1>
+        <span class="text-secondary small font-monospace">{NOME_DO_GATEWAY}</span>
+      </div>
+    </div>
+    <div class="barra-acoes">
+      {render_language_switcher(lang)}
+    </div>
+  </header>
   <div class="flex-grow-1 d-flex align-items-center justify-content-center p-3">
     <main class="card shadow-sm" style="max-width:26rem;width:100%">
       <div class="card-body p-4">
         <div class="d-flex align-items-center gap-3 mb-3">
           <span class="brand-mark"><i class="bi {ICONE_DO_PRODUTO}" aria-hidden="true"></i></span>
           <div>
-            <h1 class="h5 mb-0 fw-bold">{NOME_DO_PRODUTO}</h1>
+            <h2 class="h5 mb-0 fw-bold">{NOME_DO_PRODUTO}</h2>
             <span class="text-secondary small font-monospace">{NOME_DO_GATEWAY}</span>
           </div>
         </div>
@@ -605,7 +623,8 @@ def render_login_page(
       </div>
     </main>
   </div>
-  {rodape_da_pathbit(lang, com_seletor=True)}
+  {rodape_da_pathbit(lang, com_seletor=False)}
+  <script src="{BOOTSTRAP_JS}"></script>
 </body>
 </html>""".encode("utf-8")
 
@@ -628,12 +647,12 @@ def render_language_switcher(current: str) -> str:
     for code, (label, flag) in LANGUAGES.items():
         active = " active" if code == current else ""
         items.append(
-            f'<li><button class="dropdown-item d-flex align-items-center gap-2{active}" '
-            f'type="submit" name="lang" value="{esc(code)}" onclick="setRtksyncLang(\'{esc(code)}\')">'
-            f'<span class="fi {esc(flag)}"></span>{esc(label)}</button></li>'
+            f'<li><a class="dropdown-item d-flex align-items-center gap-2{active}" '
+            f'href="?lang={esc(code)}" onclick="setRtksyncLang(\'{esc(code)}\'); return false;">'
+            f'<span class="fi {esc(flag)}"></span>{esc(label)}</a></li>'
         )
     return f"""
-        <form method="post" action="/acoes/idioma" class="m-0 dropdown">
+        <div class="dropdown m-0">
           <button class="btn btn-outline-light btn-sm dropdown-toggle d-inline-flex align-items-center gap-2"
                   type="button" data-bs-toggle="dropdown" aria-expanded="false"
                   aria-label="{esc(translate('language.label', current))}">
@@ -641,7 +660,7 @@ def render_language_switcher(current: str) -> str:
           </button>
           <ul class="dropdown-menu dropdown-menu-end">{"".join(items)}
           </ul>
-        </form>"""
+        </div>"""
 
 
 def metric_card(label: str, value: Any, icon: str, tone: str) -> str:

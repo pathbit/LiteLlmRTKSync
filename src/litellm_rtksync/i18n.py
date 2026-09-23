@@ -1,7 +1,7 @@
 """Internacionalização da interface do painel.
 
-Idioma padrão: inglês. Português e espanhol são opcionais e escolhidos pelo
-seletor de bandeiras no topo do painel e no rodapé do login. A escolha é
+Idioma padrão: português (pt-br). Inglês e espanhol são opcionais e escolhidos
+pelo seletor de bandeiras no topo do painel e no cabeçalho do login. A escolha é
 persistida em SQLite (ver prefs.py), em cookies e em localStorage/sessionStorage,
 sobrevivendo a troca de navegador, reinicializações e limpezas de sessão.
 
@@ -9,7 +9,7 @@ Os catálogos de tradução ficam armazenados em arquivos JSON em `locales/*.jso
 sendo carregados dinamicamente na inicialização e sob demanda via
 `recarrega_traducoes()`.
 
-Chave ausente numa tradução cai para o inglês, nunca para a chave crua.
+Chave ausente numa tradução cai para o padrão, nunca para a chave crua.
 
 O catálogo é o mesmo texto nos três irmãos. O nome do produto e o do gateway
 nunca são escritos aqui: entram por interpolação a partir de `identidade.py`,
@@ -22,12 +22,12 @@ from typing import Dict
 
 from .identidade import ROTULOS_DO_PRODUTO, NOME_DO_GATEWAY
 
-DEFAULT_LANGUAGE = "en"
+DEFAULT_LANGUAGE = "pt"
 
 # Código do idioma -> (rótulo nativo, classe de bandeira do flag-icons)
 LANGUAGES: Dict[str, tuple] = {
-    "en": ("English", "fi-us"),
     "pt": ("Português", "fi-br"),
+    "en": ("English", "fi-us"),
     "es": ("Español", "fi-es"),
 }
 
@@ -79,7 +79,7 @@ def normalize_language(code: str) -> str:
 
 
 def translate(key: str, lang: str = DEFAULT_LANGUAGE, **params) -> str:
-    """Traduz uma chave, com fallback para inglês e interpolação opcional."""
+    """Traduz uma chave, com fallback para o idioma padrão e interpolação opcional."""
     lang = normalize_language(lang)
     # O rótulo do produto vem primeiro: são as poucas chaves que dependem do que
     # ESTE gateway faz, e elas moram em identidade.py justamente para que o
@@ -90,7 +90,11 @@ def translate(key: str, lang: str = DEFAULT_LANGUAGE, **params) -> str:
     if text is None:
         text = ROTULOS_DO_PRODUTO.get(DEFAULT_LANGUAGE, {}).get(key)
     if text is None:
-        text = TRANSLATIONS.get(DEFAULT_LANGUAGE, {}).get(key, key)
+        text = TRANSLATIONS.get(DEFAULT_LANGUAGE, {}).get(key)
+    if text is None:
+        text = ROTULOS_DO_PRODUTO.get("en", {}).get(key)
+    if text is None:
+        text = TRANSLATIONS.get("en", {}).get(key, key)
     if params:
         try:
             return text.format(**params)
