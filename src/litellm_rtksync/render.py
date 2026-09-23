@@ -429,7 +429,7 @@ def render_login_page(
                 )
             grade_botoes = "".join(botoes)
             desafio_html = f"""
-        <div class="mb-3 p-3 rounded" style="background:var(--bg);border:1px solid var(--line)">
+        <div id="box-desafio" class="mb-3 p-3 rounded" style="background:var(--bg);border:1px solid var(--line);transition:border-color .2s">
           <label class="form-label small d-flex align-items-center gap-2 mb-2 text-warning fw-semibold">
             <i class="bi bi-shield-check" aria-hidden="true"></i>
             <span>{esc(instrucao)}</span>
@@ -439,19 +439,58 @@ def render_login_page(
           <div class="d-flex gap-2 justify-content-between my-1" role="group" aria-label="{esc(translate("auth.challenge", lang))}">
             {grade_botoes}
           </div>
+          <div id="desafio-feedback" class="small mt-2 text-center text-info fw-semibold" style="display:none"></div>
+          <div id="desafio-erro" class="small mt-2 text-danger fw-semibold" style="display:none">
+            <i class="bi bi-exclamation-octagon-fill me-1" aria-hidden="true"></i>{esc(translate("auth.select_challenge", lang))}
+          </div>
         </div>
         <script>
-        document.querySelectorAll('.desafio-btn').forEach(btn => {{
-          btn.addEventListener('click', function() {{
-            document.querySelectorAll('.desafio-btn').forEach(b => {{
-              b.classList.remove('btn-primary', 'active');
-              b.classList.add('btn-outline-secondary');
+        (function() {{
+          const btns = document.querySelectorAll('.desafio-btn');
+          const inputResp = document.getElementById('resposta');
+          const feedback = document.getElementById('desafio-feedback');
+          const erroBox = document.getElementById('desafio-erro');
+          const boxDesafio = document.getElementById('box-desafio');
+
+          btns.forEach(btn => {{
+            btn.addEventListener('click', function() {{
+              btns.forEach(b => {{
+                b.classList.remove('btn-primary', 'active', 'border-primary', 'shadow-sm');
+                b.classList.add('btn-outline-secondary');
+                b.setAttribute('aria-pressed', 'false');
+              }});
+              this.classList.remove('btn-outline-secondary');
+              this.classList.add('btn-primary', 'active', 'border-primary', 'shadow-sm');
+              this.setAttribute('aria-pressed', 'true');
+              const val = this.getAttribute('data-val');
+              const title = this.getAttribute('title') || val;
+              if (inputResp) inputResp.value = val;
+              if (feedback) {{
+                feedback.innerHTML = '<i class="bi bi-check-circle-fill text-success me-1"></i> ' + title;
+                feedback.style.display = 'block';
+              }}
+              if (erroBox) erroBox.style.display = 'none';
+              if (boxDesafio) {{
+                boxDesafio.style.borderColor = 'var(--line)';
+                boxDesafio.classList.remove('border-danger');
+              }}
             }});
-            this.classList.remove('btn-outline-secondary');
-            this.classList.add('btn-primary', 'active');
-            document.getElementById('resposta').value = this.getAttribute('data-val');
           }});
-        }});
+
+          const form = document.querySelector('form[action="/login"]');
+          if (form) {{
+            form.addEventListener('submit', function(e) {{
+              if (inputResp && !inputResp.value) {{
+                e.preventDefault();
+                if (erroBox) erroBox.style.display = 'block';
+                if (boxDesafio) {{
+                  boxDesafio.style.borderColor = 'var(--bs-danger)';
+                  boxDesafio.classList.add('border-danger');
+                }}
+              }}
+            }});
+          }}
+        }})();
         </script>"""
         else:
             desafio_html = (
@@ -462,23 +501,23 @@ def render_login_page(
     botoes_sso = []
     if oidc_nome and saml_nome and oidc_nome == saml_nome:
         rotulo_oidc = f"{oidc_nome} (OIDC)"
-        rotulo_saml = f"{saml_nome} (SAML)"
+        rotulo_saml = f"{saml_nome} (SAML 2.0)"
     else:
-        rotulo_oidc = oidc_nome
-        rotulo_saml = saml_nome
+        rotulo_oidc = f"{oidc_nome} (OIDC)" if oidc_nome and "oidc" not in oidc_nome.lower() else oidc_nome
+        rotulo_saml = f"{saml_nome} (SAML 2.0)" if saml_nome and "saml" not in saml_nome.lower() else saml_nome
 
     if rotulo_oidc:
         botoes_sso.append(
             f'<a class="btn btn-outline-light w-100 d-inline-flex align-items-center '
             f'justify-content-center gap-2 mb-2" href="/sso/oidc/iniciar" rel="nofollow">'
-            f'<i class="bi bi-shield-check" aria-hidden="true"></i>'
+            f'<i class="bi bi-shield-check text-info" aria-hidden="true"></i>'
             f'{esc(translate("sso.sign_in_with", lang, provider=rotulo_oidc))}</a>'
         )
     if rotulo_saml:
         botoes_sso.append(
             f'<a class="btn btn-outline-light w-100 d-inline-flex align-items-center '
             f'justify-content-center gap-2 mb-2" href="/sso/saml/iniciar" rel="nofollow">'
-            f'<i class="bi bi-shield-lock" aria-hidden="true"></i>'
+            f'<i class="bi bi-shield-lock text-warning" aria-hidden="true"></i>'
             f'{esc(translate("sso.sign_in_with", lang, provider=rotulo_saml))}</a>'
         )
     elif sso_indisponivel and not botoes_sso:
@@ -1447,9 +1486,9 @@ def render_sso_modal(
     if hasattr(sso_view, "base_url"):
         sso_obj = sso_view
         prov = sso_obj.provedor
-        senha_hab = sso_obj.senha_esta_ligada()
-        oidc_hab = sso_obj.oidc_esta_ligado()
-        saml_hab = sso_obj.saml_esta_ligado()
+        senha_hab = sso_obj.senha_habilitada
+        oidc_hab = sso_obj.oidc_habilitado
+        saml_hab = sso_obj.saml_habilitado
         base_url = sso_obj.base_url or ""
         issuer = sso_obj.issuer or ""
         client_id = sso_obj.client_id or ""
