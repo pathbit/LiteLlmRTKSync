@@ -2,6 +2,7 @@
 
 - [Home](Home)
 - [Installation](Installation)
+- [Docker Deployment](Docker-Deployment)
 - [Configuration](Configuration)
 - [Dashboard](Dashboard)
 - [Authentication](Authentication)

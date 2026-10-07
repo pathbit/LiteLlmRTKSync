@@ -276,6 +276,27 @@ services:
     networks:
       - litellmrtksync-net
 
+  # --- Otimizacao de tokens (opcional) --------------------------------------
+  #
+  # Comprime payloads de contexto e reduz custos de tokens para agentes de IA (Claude
+  # Code, Cursor, Windsurf) intermediando chamadas antes do gateway:
+  #   docker compose --profile headroom up -d
+  litellmrtk-headroom:
+    image: ghcr.io/headroomlabs-ai/headroom:latest
+    container_name: litellmrtk-headroom
+    hostname: litellmrtk-headroom
+    profiles: ["headroom"]
+    restart: unless-stopped
+    ports:
+      - "127.0.0.1:8787:8787"
+    environment:
+      - UPSTREAM_URL=http://litellmrtk-router:4000
+      - PORT=8787
+    networks:
+      - litellmrtksync-net
+    depends_on:
+      - litellmrtk-router
+
 volumes:
   litellmrtk_tailnet:
   litellmrtksync_db:

@@ -16,6 +16,7 @@ republishes these pages automatically. Editing a page directly here will be over
 | Page | What it covers |
 | :--- | :--- |
 | [Installation](Installation) | Docker Compose and local virtual environment |
+| [Docker Deployment](Docker-Deployment) | Docker run, Compose, Headroom, Caveman, Tunnel, Tailscale |
 | [Configuration](Configuration) | Every environment variable — the full headless contract |
 | [Dashboard](Dashboard) | The server-rendered panel, language switcher, findings |
 | [Authentication](Authentication) | Credentials, headless mode, break-glass recovery |
