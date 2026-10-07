@@ -158,7 +158,7 @@ side of the mapping in the compose file — the right side is the internal port,
 the one the process listens on.
 
 
-Official multi-architecture Docker images (`linux/amd64` and `linux/arm64`) are published automatically to the GitHub Container Registry (GHCR) on pushes to `master` with changes in `src/`. The registry enforces an automated retention policy keeping strictly the last 3 versions:
+Official multi-architecture Docker images (`linux/amd64` and `linux/arm64`) are published automatically to the GitHub Container Registry (GHCR) on pushes to `master` and version tags (`v*.*.*`). An automated retention policy maintains strictly the last 3 versions. For a complete deployment guide covering Docker run, Compose, Headroom, Caveman, Cloudflare Tunnel, and Tailscale, see [Docker Deployment Guide](docs/wiki/Docker-Deployment.md).
 
 ```bash
 docker pull ghcr.io/pathbit/litellmrtksync:latest

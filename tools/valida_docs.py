@@ -53,7 +53,7 @@ FLAGS_DE_TERCEIROS = {
     # CLI deste produto.
     "--profile", "--env-file", "--remove-orphans", "--wait",
     "--wait-timeout", "--force-recreate", "--no-autoupdate", "--url",
-    "--token", "-d", "-f",
+    "--token", "-d", "-f", "--name", "--restart",
 }
 
 # Rotas do GATEWAY, nao do painel. A pagina de saida de rede cita a API do

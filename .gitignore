@@ -231,3 +231,4 @@ __marimo__/
 logs/
 # Clone do upstream para leitura.
 tmp/
+.DS_Store
