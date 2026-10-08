@@ -10,13 +10,12 @@ readme = "README.md"
 authors = [
     { name = "Eliel Sousa", email = "eliel@pathbit.co" }
 ]
-license = { text = "MIT" }
+license = "MIT"
 requires-python = ">=3.10"
 keywords = ["litellm", "llm-proxy", "virtual-keys", "rate-limit", "credential-check"]
 classifiers = [
     "Programming Language :: Python :: 3",
     "Programming Language :: Python :: 3.14",
-    "License :: OSI Approved :: MIT License",
     "Operating System :: OS Independent",
     "Topic :: Utilities",
 ]
