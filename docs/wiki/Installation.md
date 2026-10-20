@@ -197,7 +197,7 @@ Same for the gateways.
 | OmniRoute | `20128` | `8082` |
 | LiteLLM | `4000` | `8083` |
 | 9RTKSync panel | `9090` | `9091` |
-| OminiRTkSync panel | `9090` | `9092` |
+| OmniRTkSync panel | `9090` | `9092` |
 | LiteLlmRTKSync panel | `9090` | `9093` |
 
 The article stack (`claudegravity`) keeps **`20128`**, 9Router's default port.

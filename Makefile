@@ -48,7 +48,7 @@ status:
 docker-build:
 	docker build -t litellmrtksync:latest -t ghcr.io/pathbit/litellmrtksync:latest .
 
-# 9093 e a porta de host deste painel (9091 e do 9RTKSync, 9092 do OminiRTkSync).
+# 9093 e a porta de host deste painel (9091 e do 9RTKSync, 9092 do OmniRTkSync).
 # Publicar na 9092 ocupava a porta do irmao e mostrava este painel no endereco
 # que a documentacao atribui ao outro produto. Comentario FORA da receita: linha
 # iniciada por # dentro de um alvo vai para o shell e aparece na saida.

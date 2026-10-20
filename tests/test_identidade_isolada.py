@@ -42,9 +42,9 @@ CORES_ESTRUTURAIS = {"#e6e8ee"}
 
 PROIBIDOS = [
     (re.compile(r"#[0-9a-fA-F]{6}\b"), "cor fora de identidade.py"),
-    (re.compile(r"9RTKSync|OminiRTKSync|OminiRTkSync|LiteLlmRTKSync"), "nome de produto literal"),
+    (re.compile(r"9RTKSync|OmniRTKSync|OmniRTkSync|LiteLlmRTKSync"), "nome de produto literal"),
     (re.compile(r"9Router|OmniRoute|LiteLLM"), "nome de gateway literal"),
-    (re.compile(r"9rtk-|ominirtk-|litellmrtk-"), "prefixo de container literal"),
+    (re.compile(r"9rtk-|omnirtk-|litellmrtk-"), "prefixo de container literal"),
     (
         re.compile(r"bi-lightning-charge-fill|bi-signpost-split-fill|bi-speedometer2"),
         "ícone do produto literal",

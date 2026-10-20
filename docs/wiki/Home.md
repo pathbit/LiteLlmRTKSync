@@ -34,7 +34,7 @@ republishes these pages automatically. Editing a page directly here will be over
 
 ## Why this one is different from its siblings
 
-9RTKSync and OminiRTkSync **renew** OAuth credentials: their gateway keeps tokens that expire in
+9RTKSync and OmniRTkSync **renew** OAuth credentials: their gateway keeps tokens that expire in
 a SQLite file on disk, and nobody notices when one dies until a request fails.
 
 LiteLLM has no consumer OAuth. Its credentials are provider API keys in the model catalogue and
@@ -70,7 +70,7 @@ writing to the table would skip the invariants the proxy enforces.
 | Project | Gateway | Panel port (host) |
 | :--- | :--- | :--- |
 | [9RTKSync](https://github.com/pathbit/9RTKSync) | [9Router](https://github.com/decolua/9router) | `9091` |
-| [OminiRTkSync](https://github.com/pathbit/OminiRTkSync) | [OmniRoute](https://github.com/diegosouzapw/OmniRoute) | `9092` |
+| [OmniRTkSync](https://github.com/pathbit/OmniRTkSync) | [OmniRoute](https://github.com/diegosouzapw/OmniRoute) | `9092` |
 | **LiteLlmRTKSync** | [LiteLLM](https://github.com/BerriAI/litellm) | `9093` |
 
 All three listen on **port 9090 inside their container**; the published host ports differ so the

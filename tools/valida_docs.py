@@ -76,7 +76,7 @@ NAO_SAO_VARIAVEIS = {
 VARIAVEIS_DE_TERCEIROS = {
     # litellm/proxy/hooks/__init__.py:31, LiteLLM 1.102.0
     "LEGACY_MULTI_INSTANCE_RATE_LIMITING",
-    # Flag dos composes do 9RTKSync e do OminiRTkSync. A pagina de encadeamento
+    # Flag dos composes do 9RTKSync e do OmniRTkSync. A pagina de encadeamento
     # precisa nomea-la porque ela e uma armadilha: quem le `REQUIRE_API_KEY=false`
     # conclui que nao precisa de chave, enquanto o 9Router autoriza por peer e
     # responde 401 a qualquer vizinho de rede. O nome nunca vai existir no fonte
