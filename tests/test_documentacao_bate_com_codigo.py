@@ -13,7 +13,7 @@ Casos reais que motivaram isto, todos encontrados assim:
 
 - a página de saída de rede do 9RTKSync descrevia o gateway do irmão, com
   campos que não existem aqui;
-- a wiki do OminiRTkSync anunciava uma resposta de `/healthz` que o servidor
+- a wiki do OmniRTkSync anunciava uma resposta de `/healthz` que o servidor
   nunca devolveu;
 - o README do LiteLlmRTKSync citava uma rota `POST /api/sync` inexistente.
 """

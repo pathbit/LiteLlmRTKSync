@@ -70,7 +70,7 @@ failed. `CRON_ENABLED=0` stops the automatic loop; the **Run now** button and th
 working.
 
 **One cycle trigger, not two.** The header's **Sync now** button and the scheduler card's **Run
-now** submit the same route, `/acoes/cron`, as they do in 9RTKSync and OminiRTkSync. There used
+now** submit the same route, `/acoes/cron`, as they do in 9RTKSync and OmniRTkSync. There used
 to be a second route that ran the same cycle outside the scheduler, and a cycle triggered that
 way never appeared in the history the screen shows.
 

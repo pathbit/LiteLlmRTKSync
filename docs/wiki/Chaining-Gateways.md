@@ -37,7 +37,7 @@ hostname, like `litellmrtk-db` and `litellmrtk-router`):
 | `litellmrtk-9router` | `20128` | `8383` | **this stack** |
 | `litellmrtk-router` (LiteLLM) | `4000` | `8083` | this stack |
 | `9rtk-router` | `20128` | `8081` | 9RTKSync |
-| `ominirtk-router` | `20128` | `8082` | OminiRTkSync |
+| `omnirtk-router` | `20128` | `8082` | OmniRTkSync |
 
 Two consequences worth stating plainly:
 
@@ -68,7 +68,7 @@ $ python3 tools/registra_gateways.py --conferir
 modelos de gateway registrados neste proxy:
   gateway-omniroute-granite
     model      = openai/openrouter/ibm-granite/granite-4.2-8b
-    api_base   = http://ominirtk-router:20128/v1
+    api_base   = http://omnirtk-router:20128/v1
     credencial = gateway-cred-omniroute
   gateway-9router-gemini
     model      = openai/gemini/gemini-3.8-flash
@@ -101,7 +101,7 @@ second, **inference** network:
 
 ```
 $ docker network inspect rtk-inference-net --format '{{range .Containers}}{{.Name}} {{end}}'
-ominirtk-router 9rtk-router litellmrtk-router
+omnirtk-router 9rtk-router litellmrtk-router
 ```
 
 Only routers join it. The synchronizers stay out, because they have no business
@@ -116,7 +116,7 @@ name resolves:
 ```
 $ docker exec litellmrtk-router python3 -c "..."
   RESOLVE     9rtk-router -> 172.24.0.2
-  RESOLVE     ominirtk-router -> 172.24.0.3
+  RESOLVE     omnirtk-router -> 172.24.0.3
   RESOLVE     litellmrtk-db -> 172.22.0.2
 ```
 
@@ -148,7 +148,7 @@ still holds:
 ```
 $ docker exec 9rtk-sync getent hosts <nome>
   RESOLVE     9rtk-router
-  nao-resolve ominirtk-router (rc=2)
+  nao-resolve omnirtk-router (rc=2)
   nao-resolve litellmrtk-router (rc=2)
 ```
 
@@ -162,8 +162,8 @@ rather than by hostname:
 
 ```
 $ docker exec 9rtk-sync python3 -c "..."
-  ALCANCA    ominirtk-router gestao     172.21.0.2 20128
-  bloqueado  ominirtk-router inferencia 172.24.0.3 20128 ( TimeoutError )
+  ALCANCA    omnirtk-router gestao     172.21.0.2 20128
+  bloqueado  omnirtk-router inferencia 172.24.0.3 20128 ( TimeoutError )
 ```
 
 The management address answers; the inference address times out. Note which way
@@ -191,7 +191,7 @@ the network with it. The price is that it has to exist **before** the first `up`
 All three repositories carry the target:
 
 ```bash
-make rede-de-inferencia      # em 9RTKSync, OminiRTkSync e LiteLlmRTKSync
+make rede-de-inferencia      # em 9RTKSync, OmniRTkSync e LiteLlmRTKSync
 ```
 
 ```
@@ -215,7 +215,7 @@ docker compose -f docker-compose.example.yml --env-file .env up -d
 ```
 
 This one command now gives you the whole chain — proxy, database, **9Router** and
-synchronizer. Bring up the OminiRTkSync stack too only if you want the OmniRoute
+synchronizer. Bring up the OmniRTkSync stack too only if you want the OmniRoute
 leg.
 
 Before it runs, fill `INITIAL_PASSWORD` and `JWT_SECRET` in `.env`. They have no
@@ -355,7 +355,7 @@ On a clean install, where neither the credential nor the model exists yet:
   + credencial 'gateway-cred-9router' criada a partir de NINEROUTER_API_KEY
   + modelo 'gateway-9router-gemini' criado → openai/gemini/gemini-3.8-flash
 
-[omniroute] → http://ominirtk-router:20128/v1
+[omniroute] → http://omnirtk-router:20128/v1
   chave OMNIROUTE_API_KEY = sk-cf2*** (len=35)
   + credencial 'gateway-cred-omniroute' criada a partir de OMNIROUTE_API_KEY
   + modelo 'gateway-omniroute-granite' criado → openai/openrouter/ibm-granite/granite-4.2-8b
@@ -371,7 +371,7 @@ prefix and length. It is idempotent; a second run writes nothing:
   = credencial 'gateway-cred-9router' já existe
   = modelo 'gateway-9router-gemini' já existe → http://litellmrtk-9router:20128/v1
   = credencial 'gateway-cred-omniroute' já existe
-  = modelo 'gateway-omniroute-granite' já existe → http://ominirtk-router:20128/v1
+  = modelo 'gateway-omniroute-granite' já existe → http://omnirtk-router:20128/v1
 0 modelo(s) criado(s) nesta execução.
 ```
 
@@ -504,7 +504,7 @@ break all three.
 On OmniRoute the log carries the id of the key instead:
 
 ```
-$ docker logs -t ominirtk-router --since 3m | grep -iE "apiKeyId|POST /v1/chat"
+$ docker logs -t omnirtk-router --since 3m | grep -iE "apiKeyId|POST /v1/chat"
 2026-09-13T20:04:07.123211341Z [SKILLS_INJECTION] {"apiKeyId":"11e94a34-efa5-4b9c-8c84-3e8c243633df",...}
 2026-09-13T20:04:07.136928716Z ... "msg":"📥 POST /v1/chat/completions | openrouter/ibm-granite/granite-4.2-8b | 1 msgs"
 ```
@@ -518,7 +518,7 @@ If the answer survives the gateway being down, it never came from the gateway.
 
 ```
 $ docker stop 9rtk-router
-9rtk-router parado. na rede de inferencia agora: ominirtk-router litellmrtk-router
+9rtk-router parado. na rede de inferencia agora: omnirtk-router litellmrtk-router
 
 HTTP=500 tempo=26.016s
 {"error":{"message":"litellm.InternalServerError: OpenAIException - Connection error..
@@ -737,7 +737,7 @@ hostname, como `litellmrtk-db` e `litellmrtk-router`):
 | `litellmrtk-9router` | `20128` | `8383` | **esta stack** |
 | `litellmrtk-router` (LiteLLM) | `4000` | `8083` | esta stack |
 | `9rtk-router` | `20128` | `8081` | 9RTKSync |
-| `ominirtk-router` | `20128` | `8082` | OminiRTkSync |
+| `omnirtk-router` | `20128` | `8082` | OmniRTkSync |
 
 Duas consequências que vale dizer sem rodeio:
 
@@ -777,12 +777,12 @@ configura aqui, e o próprio proxy avisa: `Available Model Group Fallbacks=None`
 
 Cada stack tem sua rede de **gestão**. Os routers que precisam ser alcançados
 *entre* stacks compartilham uma segunda rede, de **inferência**
-(`ominirtk-router 9rtk-router litellmrtk-router`). Os sincronizadores ficam de
+(`omnirtk-router 9rtk-router litellmrtk-router`). Os sincronizadores ficam de
 fora — e, desde a seção 0, o `litellmrtk-9router` também: ele é de casa, e pô-lo
 numa rede compartilhada só o exporia aos vizinhos sem dar nada em troca.
 
 **A de inferência existe para o tráfego passar entre stacks.** Sem ela o proxy nem
-nomeia um gateway que mora em outro lugar; com ela, `ominirtk-router ->
+nomeia um gateway que mora em outro lugar; com ela, `omnirtk-router ->
 172.24.0.3` resolve de dentro do container.
 
 **A de gestão é por onde a cadeia do 9Router passa agora.** Medido em
@@ -804,7 +804,7 @@ litellmrtksync-net 172.24.0.5        # e só essa
 stacks na rede default do Docker, o mesmo nome curto resolvia para stacks
 diferentes e ninguém sabia a qual gateway um painel havia se conectado. É esse o
 defeito que a separação previne, e ele continua prevenido: `9rtk-sync` resolve
-`9rtk-router` e **não** resolve `ominirtk-router` nem `litellmrtk-router`.
+`9rtk-router` e **não** resolve `omnirtk-router` nem `litellmrtk-router`.
 **Quem juntar tudo numa rede só traz a ambiguidade de volta.**
 
 ### O que esse isolamento é, e o que não é

@@ -13,7 +13,7 @@ still trusts but the provider has revoked, and rate-limit ceilings that
 contradict each other — three states nobody is told about until a request fails.
 
 Third of the RTKSync family, after [9RTKSync](https://github.com/pathbit/9RTKSync)
-(9Router) and [OminiRTkSync](https://github.com/pathbit/OminiRTkSync) (OmniRoute).
+(9Router) and [OmniRTkSync](https://github.com/pathbit/OmniRTkSync) (OmniRoute).
 
 ## Documentation
 
@@ -29,7 +29,7 @@ request; a push to `master` republishes the wiki automatically.
 
 ## Why this is not a copy of its siblings
 
-9RTKSync and OminiRTkSync **renew** OAuth credentials: their gateway stores
+9RTKSync and OmniRTkSync **renew** OAuth credentials: their gateway stores
 tokens that expire, and nobody notices when one dies until a request fails.
 
 LiteLLM has no consumer OAuth. Its credentials are provider API keys in the
@@ -145,7 +145,7 @@ side. The same goes for the gateways: each one has its own.
 | OmniRoute | `20128` | `8082` |
 | LiteLLM | `4000` | `8083` |
 | 9RTKSync (dashboard) | `9090` | `9091` |
-| OminiRTkSync (dashboard) | `9090` | `9092` |
+| OmniRTkSync (dashboard) | `9090` | `9092` |
 | LiteLlmRTKSync (dashboard) | `9090` | `9093` |
 
 The article stack (`claudegravity`) keeps **`20128`**, the default 9Router port.

@@ -1,11 +1,11 @@
 """Este projeto nasceu portando código dos irmãos, e sobrou identidade deles.
 
-O log deste sincronizador se chamava `ominirtksync.log`, o logger respondia por
-`ominirtksync` e o diretório de fallback era `~/.ominirtksync/logs` — tudo
-copiado do OminiRTkSync e nunca renomeado. Nada disso quebra teste nem aparece
+O log deste sincronizador se chamava `omnirtksync.log`, o logger respondia por
+`omnirtksync` e o diretório de fallback era `~/.omnirtksync/logs` — tudo
+copiado do OmniRTkSync e nunca renomeado. Nada disso quebra teste nem aparece
 em revisão: aparece quando alguém procura o log deste serviço e encontra o nome
 do outro, ou pior, quando os dois rodam na mesma máquina, apontam para o mesmo
-`~/.ominirtksync/logs` e escrevem no mesmo arquivo.
+`~/.omnirtksync/logs` e escrevem no mesmo arquivo.
 
 A prosa que compara este projeto com os irmãos é bem-vinda e continua valendo —
 o que não pode é um **identificador** deste projeto carregar o nome do outro.
@@ -21,7 +21,7 @@ FONTE = os.path.join(RAIZ, "src", "litellm_rtksync")
 # Nome de outro projeto usado como identificador: arquivo, logger, diretório.
 SUSPEITOS = re.compile(
     r"""(?ix)
-    (["'][^"']*\b(?:omini|nine)rtksync[^"']*["'])   # string com o nome do irmão
+    (["'][^"']*\b(?:omni|nine)rtksync[^"']*["'])   # string com o nome do irmão
     """
 )
 

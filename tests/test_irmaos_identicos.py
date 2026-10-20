@@ -1,6 +1,6 @@
 """Os módulos comuns são o MESMO texto nos três irmãos, byte a byte.
 
-9RTKSync, OminiRTkSync e LiteLlmRTKSync são a mesma aplicação. O que muda entre
+9RTKSync, OmniRTkSync e LiteLlmRTKSync são a mesma aplicação. O que muda entre
 eles é cor, nome, logo, identidade visual e a quem cada um se conecta — e isso
 mora inteiro em `identidade.py` (o que é identidade) e em `gateway.py` (o que é
 domínio do gateway). Todo o resto tem de ser o mesmo arquivo, ou "são quase
@@ -40,7 +40,7 @@ import unittest
 RAIZ = pathlib.Path(__file__).resolve().parent.parent
 
 # Nome do diretório de cada irmão ao lado deste repositório.
-IRMAOS = ("9RTKSync", "OminiRTkSync", "LiteLlmRTKSync")
+IRMAOS = ("9RTKSync", "OmniRTkSync", "LiteLlmRTKSync")
 
 # Módulos que têm de ser o mesmo texto nos três, relativos a `src/<pacote>/`.
 IDENTICOS = (
@@ -99,9 +99,9 @@ TETOS_DE_DIVERGENCIA = {
 
 # O que cada produto troca de propósito, e que não conta como divergência.
 IDENTIDADE = (
-    ("nine_rtksync", "omini_rtksync", "litellm_rtksync"),
-    ("9RTKSync", "OminiRTKSync", "OminiRTkSync", "LiteLlmRTKSync"),
-    ("9rtk", "ominirtk", "litellmrtk"),
+    ("nine_rtksync", "omni_rtksync", "litellm_rtksync"),
+    ("9RTKSync", "OmniRTKSync", "OmniRTkSync", "LiteLlmRTKSync"),
+    ("9rtk", "omnirtk", "litellmrtk"),
     ("9Router", "OmniRoute", "LiteLLM"),
 )
 

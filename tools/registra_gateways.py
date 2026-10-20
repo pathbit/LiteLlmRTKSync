@@ -18,7 +18,7 @@ que não vêm de graça:
 
      O OmniRoute continua sendo de OUTRA stack, e para ele o encontro acontece
      numa segunda rede, `rtk-inference-net`, declarada como externa nos composes
-     e que só os gateways e este proxy compartilham. Sem ela, `ominirtk-router`
+     e que só os gateways e este proxy compartilham. Sem ela, `omnirtk-router`
      sequer resolve de dentro do container do LiteLLM.
 
          docker network create rtk-inference-net
@@ -153,11 +153,11 @@ GATEWAYS: List[Dict[str, Any]] = [
         "nome": "omniroute",
         "model_name": f"{PREFIXO}omniroute-granite",
         "model": "openai/openrouter/ibm-granite/granite-4.2-8b",
-        "api_base": "http://ominirtk-router:20128/v1",
+        "api_base": "http://omnirtk-router:20128/v1",
         "api_base_host": "http://127.0.0.1:8082/v1",
         "env_var": "OMNIROUTE_API_KEY",
         "credential_name": f"{PREFIXO}cred-omniroute",
-        "container": "ominirtk-router",
+        "container": "omnirtk-router",
     },
 ]
 

@@ -2,7 +2,7 @@ name: litellmrtksync-stack
 
 # Stack de exemplo: o proxy LiteLLM, o Postgres que ele exige, o 9Router para
 # onde o proxy encadeia e o sincronizador. Mesma forma dos irmaos 9RTKSync e
-# OminiRTkSync -- gateway, banco do gateway e o sincronizador ao lado, com o
+# OmniRTkSync -- gateway, banco do gateway e o sincronizador ao lado, com o
 # painel preso ao loopback.
 #
 # POR QUE ESTA STACK TEM O PROPRIO 9ROUTER
@@ -111,7 +111,7 @@ services:
       # a propria, de gestao, onde ficam o Postgres, o 9Router desta stack e o
       # sincronizador -- e e por ela que o encadeamento acontece hoje, pelo
       # nome `litellmrtk-9router`; e a de inferencia, que continua existindo
-      # so para alcancar gateway de OUTRA stack (`ominirtk-router`) e agora e
+      # so para alcancar gateway de OUTRA stack (`omnirtk-router`) e agora e
       # opcional para o caminho principal.
       - litellmrtksync-net
       - rtk-inference-net
@@ -167,7 +167,7 @@ services:
     restart: unless-stopped
     ports:
       # Porta interna 9090, igual nos tres sincronizadores; publicada em 9093 no
-      # host (9091 do 9RTKSync, 9092 do OminiRTkSync), para que os tres paineis
+      # host (9091 do 9RTKSync, 9092 do OmniRTkSync), para que os tres paineis
       # rodem lado a lado. O bind em 127.0.0.1 mantem o painel fora da rede.
       - "127.0.0.1:9093:9090"
     volumes:
@@ -330,9 +330,9 @@ networks:
   #
   # A de baixo e de INFERENCIA e e compartilhada de proposito. Ela responde ao
   # sintoma "nao consigo conectar o LiteLLM com um gateway de OUTRA stack":
-  # sem ela, `getent hosts ominirtk-router` de dentro deste container nao
+  # sem ela, `getent hosts omnirtk-router` de dentro deste container nao
   # resolve nada, porque cada stack vive so na sua rede. Com ela, um deployment
-  # pode apontar para http://ominirtk-router:20128/v1 ou http://9rtk-router:20128/v1.
+  # pode apontar para http://omnirtk-router:20128/v1 ou http://9rtk-router:20128/v1.
   # Atencao: 127.0.0.1:8082 NAO serve de api_base -- dentro deste container o
   # loopback e o proprio LiteLLM. Tem de ser o nome do servico.
   #

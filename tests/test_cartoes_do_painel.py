@@ -1,7 +1,7 @@
 """Os seis cartões existem, sempre, e na mesma ordem dos painéis irmãos.
 
 A regra do dono é uma só: "as telas têm cards diferentes entre LiteLlmRTKSync,
-OminiRTkSync e etc, tem que ter todos os cards iguais". O que pode mudar é o
+OmniRTkSync e etc, tem que ter todos os cards iguais". O que pode mudar é o
 CONTEÚDO; a existência e a ordem, não.
 
 Isto já quebrou uma vez em silêncio: este painel listava chaves virtuais e
