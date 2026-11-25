@@ -5,7 +5,7 @@ does not survive a restart. Events that matter — cycles that failed, keys foun
 incoherent limits, panel access — are therefore also written to a file, with daily rotation and
 age-based purge.
 
-Implemented in [`src/litellm_rtksync/logs.py`](https://github.com/pathbit/LiteLlmRTKSync/blob/master/src/litellm_rtksync/logs.py).
+Implemented in [`src/litellm_rtksync/logs.py`](https://github.com/pathbit/LiteLlmRTKSync/blob/main/src/litellm_rtksync/logs.py).
 
 ---
 

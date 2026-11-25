@@ -12,7 +12,7 @@ The synchronizer needs no volume of its own for state it must keep beyond the da
 it never touches the proxy's Postgres. It talks to the administrative API.
 
 The block below is the synchronizer's half of
-[`docker-compose.example.yml`](https://github.com/pathbit/LiteLlmRTKSync/blob/master/docker-compose.example.yml),
+[`docker-compose.example.yml`](https://github.com/pathbit/LiteLlmRTKSync/blob/main/docker-compose.example.yml),
 where the proxy service `litellmrtk-router` and its database `litellmrtk-db` are declared in
 full. Service, container and hostname carry the same name, so the address you read is the
 address that resolves.

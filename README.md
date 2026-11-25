@@ -157,7 +157,7 @@ side of the mapping in the compose file — the right side is the internal port,
 the one the process listens on.
 
 
-Official multi-architecture Docker images (`linux/amd64` and `linux/arm64`) are published automatically to the GitHub Container Registry (GHCR) on pushes to `master` and version tags (`v*.*.*`). An automated retention policy maintains strictly the last 3 versions. For a complete deployment guide covering Docker run, Compose, Headroom, Caveman, Cloudflare Tunnel, and Tailscale, see [Docker Deployment Guide](docs/wiki/Docker-Deployment.md).
+Official multi-architecture Docker images (`linux/amd64` and `linux/arm64`) are published automatically to the GitHub Container Registry (GHCR) when application or Docker build files change on `main`, and on version tags (`v*.*.*`). An automated retention policy maintains strictly the last 3 versions. For a complete deployment guide covering Docker run, Compose, Headroom, Caveman, Cloudflare Tunnel, and Tailscale, see [Docker Deployment Guide](docs/wiki/Docker-Deployment.md).
 
 ```bash
 docker pull ghcr.io/pathbit/litellmrtksync:latest
@@ -486,7 +486,7 @@ The guide also covers updates and diagnostics. [AgentDevKit quick start](https:/
 
 ## Contributing and Branch Protection
 
-* This repository keeps only the protected `master` branch. Open pull requests from a fork and wait for the required CI checks.
+* This repository keeps only the protected `main` branch. Open pull requests from a fork and wait for the required CI checks.
 * Commits use the human contributor's identity. Coding agents never sign commits or add agent attribution. If a cryptographic signature is required, the human contributor signs.
 * For bug reports or new provider requests, please open an issue in [GitHub Issues](https://github.com/pathbit/LiteLlmRTKSync/issues).
 * Official upstream proxy: [LiteLLM on GitHub](https://github.com/BerriAI/litellm).
@@ -495,7 +495,7 @@ The guide also covers updates and diagnostics. [AgentDevKit quick start](https:/
 
 ## 📄 License
 
-Distributed under the MIT License. The full text is available in [LICENSE](https://github.com/pathbit/LiteLlmRTKSync/blob/master/LICENSE).
+Distributed under the MIT License. The full text is available in [LICENSE](https://github.com/pathbit/LiteLlmRTKSync/blob/main/LICENSE).
 
 In practice: use, copy, modify, and distribute freely, including commercially, provided that copyright and license notices accompany copies. The software is provided as is, without warranty.
 

@@ -20,4 +20,4 @@
 
 ---
 
-Edited in [`docs/wiki/`](https://github.com/pathbit/LiteLlmRTKSync/tree/master/docs/wiki)
+Edited in [`docs/wiki/`](https://github.com/pathbit/LiteLlmRTKSync/tree/main/docs/wiki)

@@ -5,7 +5,7 @@ interactive setup step — the container is fully headless, and the panel is a v
 configuration, never a second source of truth for it.
 
 A regression test compares this contract against what the code actually reads: a variable added
-to the code and not to [`.env.example`](https://github.com/pathbit/LiteLlmRTKSync/blob/master/.env.example)
+to the code and not to [`.env.example`](https://github.com/pathbit/LiteLlmRTKSync/blob/main/.env.example)
 fails the build.
 
 ---

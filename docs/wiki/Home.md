@@ -5,8 +5,8 @@
 provider keys the catalogue still trusts but the provider has revoked, and rate-limit ceilings
 that contradict each other.
 
-This wiki is generated from [`docs/wiki/`](https://github.com/pathbit/LiteLlmRTKSync/tree/master/docs/wiki)
-in the main repository. Edit the files there and open a pull request — a push to `master`
+This wiki is generated from [`docs/wiki/`](https://github.com/pathbit/LiteLlmRTKSync/tree/main/docs/wiki)
+in the main repository. Edit the files there and open a pull request — a push to `main`
 republishes these pages automatically. Editing a page directly here will be overwritten.
 
 ---
@@ -104,6 +104,6 @@ Full detail in [Authentication](Authentication).
 
 ## License
 
-MIT — see [LICENSE](https://github.com/pathbit/LiteLlmRTKSync/blob/master/LICENSE).
+MIT — see [LICENSE](https://github.com/pathbit/LiteLlmRTKSync/blob/main/LICENSE).
 
 Built by [Pathbit](https://pathbit.co/).
