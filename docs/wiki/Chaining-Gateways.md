@@ -37,7 +37,7 @@ hostname, like `litellmrtk-db` and `litellmrtk-router`):
 | `litellmrtk-9router` | `20128` | `8383` | **this stack** |
 | `litellmrtk-router` (LiteLLM) | `4000` | `8083` | this stack |
 | `9rtk-router` | `20128` | `8081` | 9RTKSync |
-| `omnirtk-router` | `20128` | `8082` | OmniRTkSync |
+| `omnirtk-router` | `20128` | `8082` | OmniRTKSync |
 
 Two consequences worth stating plainly:
 
@@ -191,7 +191,7 @@ the network with it. The price is that it has to exist **before** the first `up`
 All three repositories carry the target:
 
 ```bash
-make rede-de-inferencia      # em 9RTKSync, OmniRTkSync e LiteLlmRTKSync
+make rede-de-inferencia      # em 9RTKSync, OmniRTKSync e LiteLlmRTKSync
 ```
 
 ```
@@ -215,7 +215,7 @@ docker compose -f docker-compose.example.yml --env-file .env up -d
 ```
 
 This one command now gives you the whole chain — proxy, database, **9Router** and
-synchronizer. Bring up the OmniRTkSync stack too only if you want the OmniRoute
+synchronizer. Bring up the OmniRTKSync stack too only if you want the OmniRoute
 leg.
 
 Before it runs, fill `INITIAL_PASSWORD` and `JWT_SECRET` in `.env`. They have no
@@ -737,7 +737,7 @@ hostname, como `litellmrtk-db` e `litellmrtk-router`):
 | `litellmrtk-9router` | `20128` | `8383` | **esta stack** |
 | `litellmrtk-router` (LiteLLM) | `4000` | `8083` | esta stack |
 | `9rtk-router` | `20128` | `8081` | 9RTKSync |
-| `omnirtk-router` | `20128` | `8082` | OmniRTkSync |
+| `omnirtk-router` | `20128` | `8082` | OmniRTKSync |
 
 Duas consequências que vale dizer sem rodeio:
 

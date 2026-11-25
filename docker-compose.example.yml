@@ -2,7 +2,7 @@ name: litellmrtksync-stack
 
 # Stack de exemplo: o proxy LiteLLM, o Postgres que ele exige, o 9Router para
 # onde o proxy encadeia e o sincronizador. Mesma forma dos irmaos 9RTKSync e
-# OmniRTkSync -- gateway, banco do gateway e o sincronizador ao lado, com o
+# OmniRTKSync -- gateway, banco do gateway e o sincronizador ao lado, com o
 # painel preso ao loopback.
 #
 # POR QUE ESTA STACK TEM O PROPRIO 9ROUTER
@@ -167,7 +167,7 @@ services:
     restart: unless-stopped
     ports:
       # Porta interna 9090, igual nos tres sincronizadores; publicada em 9093 no
-      # host (9091 do 9RTKSync, 9092 do OmniRTkSync), para que os tres paineis
+      # host (9091 do 9RTKSync, 9092 do OmniRTKSync), para que os tres paineis
       # rodem lado a lado. O bind em 127.0.0.1 mantem o painel fora da rede.
       - "127.0.0.1:9093:9090"
     volumes:

@@ -55,6 +55,8 @@ pip-delete-this-directory.txt
 *.md
 README*
 LICENSE*
+!README.md
+!LICENSE
 CHANGELOG*
 docs/
 documentation/
@@ -105,3 +107,7 @@ pnpm-debug.log*
 ehthumbs.db
 Thumbs.db
 desktop.ini
+
+# Ambientes e arquivos temporários locais
+**/.venv/
+**/tmp/

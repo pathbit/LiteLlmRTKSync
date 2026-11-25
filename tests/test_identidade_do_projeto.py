@@ -2,7 +2,7 @@
 
 O log deste sincronizador se chamava `omnirtksync.log`, o logger respondia por
 `omnirtksync` e o diretório de fallback era `~/.omnirtksync/logs` — tudo
-copiado do OmniRTkSync e nunca renomeado. Nada disso quebra teste nem aparece
+copiado do OmniRTKSync e nunca renomeado. Nada disso quebra teste nem aparece
 em revisão: aparece quando alguém procura o log deste serviço e encontra o nome
 do outro, ou pior, quando os dois rodam na mesma máquina, apontam para o mesmo
 `~/.omnirtksync/logs` e escrevem no mesmo arquivo.

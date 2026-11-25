@@ -68,7 +68,7 @@ jobs:
         id: meta
         uses: docker/metadata-action@v5
         with:
-          images: ghcr.io/${{ github.repository }}
+          images: ghcr.io/pathbit/litellmrtksync
           tags: |
             type=raw,value=latest,enable=${{ github.ref == 'refs/heads/master' }}
             type=sha,format=short,prefix=sha-
@@ -95,6 +95,10 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v4
 
+      - name: Resolve Docker version tag
+        id: docker-version
+        run: echo "tag=${GITHUB_REF_NAME#v}" >> "$GITHUB_OUTPUT"
+
       - name: Create GitHub Release
         uses: softprops/action-gh-release@v2
         with:
@@ -105,8 +109,8 @@ jobs:
             
             Multi-arch Docker image (linux/amd64, linux/arm64) published to GitHub Container Registry:
             ```bash
-            docker pull ghcr.io/${{ github.repository }}:${{ github.ref_name }}
-            docker pull ghcr.io/${{ github.repository }}:latest
+            docker pull ghcr.io/pathbit/litellmrtksync:${{ steps.docker-version.outputs.tag }}
+            docker pull ghcr.io/pathbit/litellmrtksync:latest
             ```
 
   prune-packages:

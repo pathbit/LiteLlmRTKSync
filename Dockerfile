@@ -31,7 +31,7 @@ ENV WEB_HOST=0.0.0.0
 ENV ENABLE_WEB_DASHBOARD=1
 
 COPY src/ /app/src/
-COPY pyproject.toml /app/
+COPY pyproject.toml README.md LICENSE /app/
 
 # Instalação do pacote dentro do virtual environment
 RUN pip install --no-cache-dir --upgrade pip && \
@@ -45,7 +45,7 @@ RUN mkdir -p /app/logs && chown -R 1000:1000 /app/logs
 EXPOSE 9090
 
 HEALTHCHECK --interval=15s --timeout=5s --start-period=10s --retries=3 \
-  CMD /opt/venv/bin/python3 -c "import urllib.request; urllib.request.urlopen('http://127.0.0.1:9090/healthz', timeout=3)" || exit 1
+  CMD /opt/venv/bin/python3 -c "import os, urllib.request; urllib.request.urlopen('http://127.0.0.1:' + os.environ['WEB_PORT'] + '/healthz', timeout=3)" || exit 1
 
 ENTRYPOINT ["/opt/venv/bin/python3", "-m", "litellm_rtksync.cli"]
 CMD ["--daemon"]

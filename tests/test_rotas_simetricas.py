@@ -19,7 +19,7 @@ import re
 import unittest
 
 RAIZ = pathlib.Path(__file__).resolve().parent.parent
-IRMAOS = ("9RTKSync", "OmniRTkSync", "LiteLlmRTKSync")
+IRMAOS = ("9RTKSync", "OmniRTKSync", "LiteLlmRTKSync")
 
 # Rotas que o produto TEM de servir, independentemente do gateway por trás.
 # Entram aqui as que algum pedido explícito criou -- assim o teste também
