@@ -427,22 +427,6 @@ Inherited from the siblings, for the same reasons:
 
 ---
 
-## Contributing and Branch Protection
-
-* The `master` branch is protected. All contributions must be submitted through Pull Requests and pass all CI checks.
-* For bug reports or new provider requests, please open an issue in [GitHub Issues](https://github.com/pathbit/LiteLlmRTKSync/issues).
-* Official upstream proxy: [LiteLLM on GitHub](https://github.com/BerriAI/litellm).
-
----
-
-## 📄 License
-
-Distributed under the MIT License. The full text is available in [LICENSE](https://github.com/pathbit/LiteLlmRTKSync/blob/master/LICENSE).
-
-In practice: use, copy, modify, and distribute freely, including commercially, provided that copyright and license notices accompany copies. The software is provided as is, without warranty.
-
----
-
 # Em português
 
 Terceiro da família RTKSync. **Não é cópia dos irmãos:** o LiteLLM não tem OAuth
@@ -479,6 +463,22 @@ responde em `http://127.0.0.1:9093`, preso ao loopback. O primeiro acesso usa a
 credencial de recuperação, gerada no primeiro boot — o log diz em qual arquivo
 ela está, nunca o valor. Defina a sua senha pela tela: não existe senha de
 fábrica, porque um valor estático é, por definição, uma credencial pública.
+
+---
+
+## Contributing and Branch Protection
+
+* The `master` branch is protected. All contributions must be submitted through Pull Requests and pass all CI checks.
+* For bug reports or new provider requests, please open an issue in [GitHub Issues](https://github.com/pathbit/LiteLlmRTKSync/issues).
+* Official upstream proxy: [LiteLLM on GitHub](https://github.com/BerriAI/litellm).
+
+---
+
+## 📄 License
+
+Distributed under the MIT License. The full text is available in [LICENSE](https://github.com/pathbit/LiteLlmRTKSync/blob/master/LICENSE).
+
+In practice: use, copy, modify, and distribute freely, including commercially, provided that copyright and license notices accompany copies. The software is provided as is, without warranty.
 
 ---
 
