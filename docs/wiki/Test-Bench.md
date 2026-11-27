@@ -162,7 +162,7 @@ PLATFORM_MAX_BUDGET=100
 
 `bancada-time-folgado` then exceeds all three, and `bancada-chave-incoerente` exceeds its own team
 on two more — six findings where an empty proxy produces none. See
-[Rate Limit Coherence](Rate-Limit-Coherence) for the rule itself.
+[Rate Limit Coherence](Rate-Limit-Coherence.md) for the rule itself.
 
 ## Verifying on the screen, not on the API
 

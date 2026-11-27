@@ -8,7 +8,7 @@ and the order in which you turn things on decides whether that is safe.
 
 > **This page is about getting IN.** Sending traffic OUT through a chosen
 > address, so each account has its own source IP, is a different problem with a
-> different answer — see [Egress Testing](Egress-Testing).
+> different answer — see [Egress Testing](Egress-Testing.md).
 > Tailscale appears in both pages doing two unrelated jobs.
 
 ---
@@ -277,7 +277,7 @@ isso é seguro.
 
 > **Esta página é sobre entrar.** Fazer o tráfego **sair** por um endereço
 > escolhido, para que cada conta tenha o seu IP, é outro problema — veja
-> [Saída de rede](Egress-Testing). O Tailscale aparece nas duas páginas fazendo
+> [Saída de rede](Egress-Testing.md). O Tailscale aparece nas duas páginas fazendo
 > trabalhos diferentes.
 
 ## Leia antes de ligar qualquer coisa

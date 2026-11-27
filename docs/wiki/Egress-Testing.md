@@ -56,7 +56,7 @@ the **gateway's** decision, configure the proxy in the gateway and let it make
 the request:
 
 **LiteLLM has no proxy-pool API.** Nothing in the administrative surface this
-project reads — see [Architecture](Architecture) — registers an egress address,
+project reads — see [Architecture](Architecture.md) — registers an egress address,
 and there is no per-account binding to configure. What LiteLLM honours is the
 process-wide proxy environment of the container it runs in, which means one
 instance has one egress address:
@@ -159,7 +159,7 @@ O script, como vem, dirige o `curl` — isso verifica a bancada. Para medir a
 decisão **do gateway**, configure o proxy nele e deixe-o fazer a requisição.
 
 **O LiteLLM não tem API de proxy pool.** Nada na superfície administrativa que
-este projeto lê — veja [Arquitetura](Architecture) — cadastra endereço de saída,
+este projeto lê — veja [Arquitetura](Architecture.md) — cadastra endereço de saída,
 e não há vínculo por conta para configurar. O que o LiteLLM respeita é o proxy
 declarado no ambiente do container, que vale para o processo inteiro: uma
 instância, um endereço de saída. Conecte `litellmrtk-router` à rede

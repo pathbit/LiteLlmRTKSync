@@ -38,7 +38,7 @@ with the key it actually holds — and translates the answer into `Accepted`, `R
 `Rate limited` or `Unreachable`. A model the gateway did not judge stays `Not checked`, because
 inventing a verdict is worse than admitting the gap. The whole path runs under
 `CREDENTIAL_CHECK_ENABLED` and costs one real provider call per model per cycle. To see it with
-real data, see [Test Bench](Test-Bench).
+real data, see [Test Bench](Test-Bench.md).
 
 **The team column carries the alias, not the raw id.** `/key/list` returns `team_alias` null on
 every key, so the readable name is joined in from `/team/list` at render time. Without that join the
@@ -57,7 +57,7 @@ absent reads *not declared*, never "unlimited", and the key itself never appears
 both values and the consequence — but it runs from the command line (`--status`), not from a
 card here. The panel shows the same six cards as the siblings, and one product having a
 seventh was the asymmetry we set out to remove. See
-[Rate Limit Coherence](Rate-Limit-Coherence) for the rule and how to read it.
+[Rate Limit Coherence](Rate-Limit-Coherence.md) for the rule and how to read it.
 
 **Proxy liveness.** A card against `/health/liveliness`, so "the panel is up" and "the proxy is
 up" are never confused for each other.
@@ -133,7 +133,7 @@ panel **refuses** the change with an explicit notice — *credentials defined by
 variable; change them in the environment and restart*. Accepting it would be worse: the change
 would appear to work and be lost at the next recreate.
 
-See [Authentication](Authentication).
+See [Authentication](Authentication.md).
 
 ---
 

@@ -45,7 +45,12 @@ jobs:
         run: |
           # Replace the whole page set so a deleted source file disappears from the wiki too.
           find wiki -maxdepth 1 -name '*.md' -delete
-          cp docs/wiki/*.md wiki/
+          wiki_url="$GITHUB_SERVER_URL/$GITHUB_REPOSITORY/wiki"
+          for page in docs/wiki/*.md; do
+            # Source links use .md for GitHub's repository view.
+            sed -E "s|(\]\()([A-Za-z0-9_-]+)\.md([#)])|\1$wiki_url/\2\3|g" \
+              "$page" > "wiki/${page##*/}"
+          done
 
       - name: Commit and push
         if: steps.clone.outputs.ok == 'true'

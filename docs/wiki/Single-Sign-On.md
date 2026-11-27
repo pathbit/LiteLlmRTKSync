@@ -18,7 +18,7 @@ Single sign-on registers a **return address** at the provider. If that address c
 sign-in breaks with an error message written by the provider, not by us.
 
 That rules out a quick tunnel: it hands out a new hostname every time it starts (see
-[Remote Access](Remote-Access)). Use a **named tunnel** or **Tailscale**, and write that fixed
+[Remote Access](Remote-Access.md)). Use a **named tunnel** or **Tailscale**, and write that fixed
 origin into the panel — it is the first field of the settings screen.
 
 ---
@@ -112,7 +112,7 @@ Four independent ways back in, in the order you should try them:
 1. **The local form never leaves the screen.** User and password still work, with the provider
    dead or alive.
 2. **The recovery credential always works.** It is break-glass and stays valid after a password is
-   set — see [Authentication](Authentication).
+   set — see [Authentication](Authentication.md).
 3. **`SSO_DISABLED=1` in the environment** beats the database without touching it. Recreate the
    container with the variable and the login page goes back to the plain form.
 4. **The non-HTML door is untouched.** `curl`, cron and monitoring keep using Basic Auth and never
@@ -186,7 +186,7 @@ O acesso federado registra um **endereço de retorno** no provedor. Se esse ende
 entrada passa a falhar com uma mensagem escrita pelo provedor, não por nós.
 
 Isso descarta o túnel rápido: ele entrega um nome novo a cada subida (veja
-[Remote Access](Remote-Access)). Use um **túnel nomeado** ou o **Tailscale**, e escreva essa
+[Remote Access](Remote-Access.md)). Use um **túnel nomeado** ou o **Tailscale**, e escreva essa
 origem fixa no painel — é o primeiro campo da tela de configuração.
 
 ---
@@ -279,7 +279,7 @@ Quatro saídas independentes, na ordem em que se deve tentar:
 1. **O formulário local não sai da tela.** Usuário e senha continuam entrando, com o provedor vivo
    ou morto.
 2. **A credencial de recuperação sempre entra.** Ela é de emergência e continua válida depois de a
-   senha ser definida — veja [Authentication](Authentication).
+   senha ser definida — veja [Authentication](Authentication.md).
 3. **`SSO_DISABLED=1` no ambiente** vence o banco sem tocar nele. Recrie o container com a variável
    e a tela de login volta ao formulário puro.
 4. **A porta que não é HTML fica intacta.** `curl`, cron e monitoramento continuam com Basic Auth e

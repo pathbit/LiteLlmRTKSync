@@ -69,7 +69,7 @@ The second most common: `0` means **no limit** in LiteLLM, not "zero allowed". I
 the comparison; treating it as a ceiling of zero would raise a finding against every key in the
 installation.
 
-See [Rate Limit Coherence](Rate-Limit-Coherence).
+See [Rate Limit Coherence](Rate-Limit-Coherence.md).
 
 ---
 
@@ -90,7 +90,7 @@ Change the variable and recreate the container:
 docker compose -f docker-compose.example.yml up -d --force-recreate litellmrtk-sync
 ```
 
-See [Authentication](Authentication).
+See [Authentication](Authentication.md).
 
 ---
 

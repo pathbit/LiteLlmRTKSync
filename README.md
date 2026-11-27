@@ -17,7 +17,7 @@ Third of the RTKSync family, after [9RTKSync](https://github.com/pathbit/9RTKSyn
 
 ## Documentation
 
-The [project documentation](docs/wiki/) covers installation, the complete
+The [project documentation](docs/wiki/Home.md) covers installation, the complete
 environment-variable contract, the dashboard, authentication and break-glass recovery,
 persistent logging, architecture, troubleshooting, rate-limit coherence, and how to size a
 team against an API tier.

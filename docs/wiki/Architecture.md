@@ -76,7 +76,7 @@ Two details learned the hard way:
 4. **Probe credentials.** Each provider key registered on a model is asked of its own provider —
    when `CREDENTIAL_CHECK_ENABLED=1`.
 5. **Check coherence.** Field by field, key ≤ team ≤ platform. See
-   [Rate Limit Coherence](Rate-Limit-Coherence).
+   [Rate Limit Coherence](Rate-Limit-Coherence.md).
 6. **Report.** To the panel, to the log, and — for `--status` — to the exit code.
 
 ---

@@ -47,7 +47,7 @@ to issue a replacement.
 
 No team and no key may declare above these. LiteLLM accepts the incoherent configuration without
 complaint, so this is where the ceiling is declared. Empty means *no cap declared* — reported as
-a choice, not as an error. See [Rate Limit Coherence](Rate-Limit-Coherence).
+a choice, not as an error. See [Rate Limit Coherence](Rate-Limit-Coherence.md).
 
 ---
 

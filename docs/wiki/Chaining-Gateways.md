@@ -83,7 +83,7 @@ Three things follow from that, and only the first is cosmetic:
   sent to the proxy once and stored encrypted under `LITELLM_SALT_KEY`.
 * **Keys, teams and ceilings.** A gateway key is one credential with one set of
   limits. In front of it, LiteLLM issues per-team keys whose limits are checked
-  for coherence — see [Rate Limit Coherence](Rate-Limit-Coherence). That is the
+  for coherence — see [Rate Limit Coherence](Rate-Limit-Coherence.md). That is the
   capability the gateways simply do not have.
 * **Accounting across both.** Spend and rate counters live in one place instead
   of one per gateway.
@@ -766,7 +766,7 @@ escolha do gateway vira um **nome de modelo** (`gateway-9router-gemini`,
   LiteLLM. Quem chama nunca segura `NINEROUTER_API_KEY` nem `OMNIROUTE_API_KEY`.
 * **Chaves, times e tetos.** Uma chave de gateway é uma credencial com um conjunto
   de limites. Na frente dela, o LiteLLM emite chaves por time com limites
-  conferidos — veja [Rate Limit Coherence](Rate-Limit-Coherence). É a capacidade
+  conferidos — veja [Rate Limit Coherence](Rate-Limit-Coherence.md). É a capacidade
   que os gateways não têm.
 * **Contabilidade num lugar só**, em vez de uma por gateway.
 

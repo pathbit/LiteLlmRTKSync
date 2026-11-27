@@ -16,7 +16,7 @@ budget, arranged in a chain that this tool exists to check:
 Σ (keys of a team)  ≤  team ceiling  ≤  PLATFORM_*  ≤  the provider's API tier
 ```
 
-The bottom link is what [Rate Limit Coherence](Rate-Limit-Coherence) verifies and
+The bottom link is what [Rate Limit Coherence](Rate-Limit-Coherence.md) verifies and
 reports. The top link is **published**, so unlike the subscription path this one
 resolves to real numbers. This page is how you get from a headcount to those
 numbers, and back to the panel that tells you whether you got it right.
@@ -266,12 +266,12 @@ complains. The four fields compared live in `CAMPOS_DE_TETO`
 Leaving `PLATFORM_*` empty is a **choice, not an error** — the panel reports *no
 cap declared* and goes on comparing key against team. But an empty platform level
 means the sizing above was never written down anywhere the tool can check. Full
-variable reference in [Configuration](Configuration).
+variable reference in [Configuration](Configuration.md).
 
 ## What this synchronizer shows you about it
 
 Capacity questions have a specific screen: the **virtual keys** table on the
-[Dashboard](Dashboard) and the detail modal behind each row's `(i)` button. Field
+[Dashboard](Dashboard.md) and the detail modal behind each row's `(i)` button. Field
 by field, with the names as the code writes them:
 
 | Question | Field | Where it is read | Panel label |
@@ -296,7 +296,7 @@ rest is projection.
 **A budget of `0` or absent reads *not declared*, never "unlimited."**
 `max_budget` returns `None` for anything not strictly positive
 `[FONTE: src/litellm_rtksync/models.py:83-90]` — the same reasoning as *zero is
-not a ceiling of zero* in [Rate Limit Coherence](Rate-Limit-Coherence). An absent
+not a ceiling of zero* in [Rate Limit Coherence](Rate-Limit-Coherence.md). An absent
 value is missing data, not a promise.
 
 **`SEVERIDADE_SEM_TETO` says *this key* has nothing above it — read it precisely.**
@@ -316,7 +316,7 @@ switches off the check that would have caught you.
 does not show `R_h` or `T_in`.** The client reads `/key/list`, `/team/list`,
 `/model/info`, `/health`, `/credentials` and `/health/liveliness`, and nothing
 else `[FONTE: src/litellm_rtksync/gateway.py:114-201]`; see
-[Architecture](Architecture) for why the administrative API is the only surface it
+[Architecture](Architecture.md) for why the administrative API is the only surface it
 touches. For per-hour rate and per-request tokens, query LiteLLM's own spend log
 grouped by hour — each entry already carries key, model and tokens — or run
 `tools/measure_agent_usage.py` against your agent history. The same log is where
@@ -363,7 +363,7 @@ arrangement described — and the chain above is how you keep the split honest.
 
 One line on egress, because it is the siblings' shape and not this one's: what
 draws attention is many accounts leaving through one address, and a LiteLLM
-instance has one egress address for one credential. [Egress Testing](Egress-Testing)
+instance has one egress address for one credential. [Egress Testing](Egress-Testing.md)
 is the bench that proves where the traffic actually leaves from.
 
 ## Reproducing all of it
@@ -417,7 +417,7 @@ que este projeto existe para conferir:
 Σ (chaves de um time)  ≤  teto do time  ≤  PLATFORM_*  ≤  tier da API do fornecedor
 ```
 
-O elo de baixo é o que [Coerência de limites](Rate-Limit-Coherence) verifica e
+O elo de baixo é o que [Coerência de limites](Rate-Limit-Coherence.md) verifica e
 denuncia. O elo de cima é **publicado** — por isso, ao contrário do caminho de
 assinatura, este fecha com número. Esta página vai do headcount até esses números,
 e de volta ao painel que diz se você acertou.
@@ -660,12 +660,12 @@ quatro campos comparados estão em `CAMPOS_DE_TETO`
 Deixar `PLATFORM_*` vazio é **uma escolha, não um erro**: o painel reporta *sem
 teto declarado* e segue comparando chave contra time. Mas plataforma vazia
 significa que o dimensionamento acima não foi anotado em lugar nenhum que a
-ferramenta possa conferir. Variáveis em [Configuração](Configuration).
+ferramenta possa conferir. Variáveis em [Configuração](Configuration.md).
 
 ## O que este sincronizador te mostra sobre isso
 
 A pergunta de capacidade tem uma tela: a tabela de **chaves virtuais** do
-[Painel](Dashboard) e o modal de detalhe atrás do `(i)` de cada linha. Campo a
+[Painel](Dashboard.md) e o modal de detalhe atrás do `(i)` de cada linha. Campo a
 campo, com o nome que o código escreve:
 
 | Pergunta | Campo | Onde é lido | Rótulo no painel |
@@ -689,7 +689,7 @@ chave e por período, é a única evidência que fecha o laço — o resto é pr
 **Orçamento `0` ou ausente lê-se *não declarado*, nunca "ilimitado".**
 `max_budget` devolve `None` para qualquer coisa que não seja estritamente positiva
 `[FONTE: src/litellm_rtksync/models.py:83-90]` — o mesmo raciocínio do *zero não é
-teto de zero* em [Coerência de limites](Rate-Limit-Coherence). Valor ausente é
+teto de zero* em [Coerência de limites](Rate-Limit-Coherence.md). Valor ausente é
 dado que falta, não promessa.
 
 **`SEVERIDADE_SEM_TETO` diz que *aquela chave* não tem nada acima dela — leia com
@@ -709,7 +709,7 @@ só de avisar: desliga a verificação que teria pegado o erro.
 **E o limite: o painel mostra teto declarado e gasto acumulado — ele não mostra
 `R_h` nem `T_in`.** O cliente lê `/key/list`, `/team/list`, `/model/info`,
 `/health`, `/credentials` e `/health/liveliness`, e nada além disso
-`[FONTE: src/litellm_rtksync/gateway.py:114-201]`; veja [Arquitetura](Architecture)
+`[FONTE: src/litellm_rtksync/gateway.py:114-201]`; veja [Arquitetura](Architecture.md)
 para o porquê de a API administrativa ser a única superfície tocada. Para ritmo
 por hora e tokens por requisição, consulte o log de gasto do próprio LiteLLM
 agrupado por hora — cada entrada já traz chave, modelo e tokens — ou rode
@@ -758,7 +758,7 @@ arranjo descrito — e a cadeia acima é como se mantém a repartição honesta.
 Uma linha sobre saída de rede, porque é a forma dos irmãos e não desta: o que
 chama atenção é várias contas saindo pelo mesmo endereço, e uma instância do
 LiteLLM tem um endereço de saída para uma credencial.
-[Teste de saída de rede](Egress-Testing) é a bancada que prova por onde o tráfego
+[Teste de saída de rede](Egress-Testing.md) é a bancada que prova por onde o tráfego
 realmente sai.
 
 ## Reproduzindo tudo

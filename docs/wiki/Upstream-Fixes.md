@@ -39,7 +39,7 @@ The second call succeeds. No warning, no field flagged.
 **What this project does about it.** Reports the disagreement, field by field, naming both values
 and which one applies. It never corrects the number — lowering a limit changes what a real user
 can do, and that is the operator's decision. See
-[Rate Limit Coherence](Rate-Limit-Coherence).
+[Rate Limit Coherence](Rate-Limit-Coherence.md).
 
 ---
 
@@ -76,7 +76,7 @@ than assuming the first page is the whole set.
 
 **No consumer OAuth to renew.** This is not a bug; it is a design difference from the sibling
 gateways, and the reason this project checks instead of renewing. It is documented in
-[Home](Home) so nobody arrives expecting `expires_at` healing that cannot exist here.
+[Home](Home.md) so nobody arrives expecting `expires_at` healing that cannot exist here.
 
 **`0` meaning "no limit".** Idiomatic in LiteLLM and internally consistent. We handle it; there
 is nothing to fix upstream.

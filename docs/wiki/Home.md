@@ -5,9 +5,7 @@
 provider keys the catalogue still trusts but the provider has revoked, and rate-limit ceilings
 that contradict each other.
 
-This wiki is generated from [`docs/wiki/`](https://github.com/pathbit/LiteLlmRTKSync/tree/main/docs/wiki)
-in the main repository. Edit the files there and open a pull request — a push to `main`
-republishes these pages automatically. Editing a page directly here will be overwritten.
+The source of these guides is [`docs/wiki/`](https://github.com/pathbit/LiteLlmRTKSync/tree/main/docs/wiki) in the main repository. Open a pull request there to update the guides. GitHub Actions republishes them when changes reach `main` after the Wiki has been initialized.
 
 ---
 
@@ -15,20 +13,20 @@ republishes these pages automatically. Editing a page directly here will be over
 
 | Page | What it covers |
 | :--- | :--- |
-| [Installation](Installation) | Docker Compose and local virtual environment |
-| [Docker Deployment](Docker-Deployment) | Docker run, Compose, Headroom, Caveman, Tunnel, Tailscale |
-| [Configuration](Configuration) | Every environment variable — the full headless contract |
-| [Dashboard](Dashboard) | The server-rendered panel, language switcher, findings |
-| [Authentication](Authentication) | Credentials, headless mode, break-glass recovery |
-| [Logging](Logging) | Persistent file log, rotation, 30-day retention |
-| [Architecture](Architecture) | How the inspection engine talks to the LiteLLM admin API |
-| [Remote Access](Remote-Access) | Tunnel, Tailscale, and what has to be on before either |
-| [Egress Testing](Egress-Testing) | A bench that proves where the traffic actually leaves from |
-| [Rate Limit Coherence](Rate-Limit-Coherence) | The rule this project exists for: key ≤ team ≤ platform |
-| [Test Bench](Test-Bench) | Filling an empty proxy with real data, so the dashboard has something to report |
-| [Licensing and Capacity](Licensing-And-Capacity) | Sizing a team against a tier — and why "licence" is the wrong word here |
-| [Troubleshooting](Troubleshooting) | Concrete symptoms and what they actually mean |
-| [Upstream Fixes](Upstream-Fixes) | What was found in LiteLLM and reported upstream |
+| [Installation](Installation.md) | Docker Compose and local virtual environment |
+| [Docker Deployment](Docker-Deployment.md) | Docker run, Compose, Headroom, Caveman, Tunnel, Tailscale |
+| [Configuration](Configuration.md) | Every environment variable — the full headless contract |
+| [Dashboard](Dashboard.md) | The server-rendered panel, language switcher, findings |
+| [Authentication](Authentication.md) | Credentials, headless mode, break-glass recovery |
+| [Logging](Logging.md) | Persistent file log, rotation, 30-day retention |
+| [Architecture](Architecture.md) | How the inspection engine talks to the LiteLLM admin API |
+| [Remote Access](Remote-Access.md) | Tunnel, Tailscale, and what has to be on before either |
+| [Egress Testing](Egress-Testing.md) | A bench that proves where the traffic actually leaves from |
+| [Rate Limit Coherence](Rate-Limit-Coherence.md) | The rule this project exists for: key ≤ team ≤ platform |
+| [Test Bench](Test-Bench.md) | Filling an empty proxy with real data, so the dashboard has something to report |
+| [Licensing and Capacity](Licensing-And-Capacity.md) | Sizing a team against a tier — and why "licence" is the wrong word here |
+| [Troubleshooting](Troubleshooting.md) | Concrete symptoms and what they actually mean |
+| [Upstream Fixes](Upstream-Fixes.md) | What was found in LiteLLM and reported upstream |
 
 ---
 
@@ -52,7 +50,7 @@ it tries to use it. Each key is asked of its own provider instead of being assum
 **An incoherent limit is accepted without complaint.** A team capped at `rpm_limit=60` accepts a
 key declaring `rpm_limit=600` — verified against a real proxy. The effective limit is always the
 most restrictive on the path, so the larger number exists only in the record. See
-[Rate Limit Coherence](Rate-Limit-Coherence).
+[Rate Limit Coherence](Rate-Limit-Coherence.md).
 
 ---
 
@@ -100,7 +98,7 @@ password on the screen:
 docker exec litellmrtk-sync cat /app/data/.dashboard_recovery
 ```
 
-Full detail in [Authentication](Authentication).
+Full detail in [Authentication](Authentication.md).
 
 ## License
 

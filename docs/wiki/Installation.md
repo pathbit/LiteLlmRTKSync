@@ -2,7 +2,7 @@
 
 Two supported paths: Docker Compose alongside your LiteLLM proxy, or a local virtual environment
 for development. Both need the same two things — the proxy's address and its master key.
-For a complete guide covering Docker run, Compose, Headroom, Caveman, Tunnel, and Tailscale, see [Docker Deployment](Docker-Deployment).
+For a complete guide covering Docker run, Compose, Headroom, Caveman, Tunnel, and Tailscale, see [Docker Deployment](Docker-Deployment.md).
 
 ---
 
@@ -128,7 +128,7 @@ cp .env.example .env
 ```
 
 `.env` is ignored by git and must stay that way. The example file carries no secret value by
-design — see [Configuration](Configuration) for every variable.
+design — see [Configuration](Configuration.md) for every variable.
 
 ### 4. Run
 
@@ -154,7 +154,7 @@ There is **no factory password**. On first boot, if `DASHBOARD_PASSWORD` is empt
 credential is generated and written with mode `0600` inside the data directory. The log names
 the file, never the value. Sign in with it, then set your own password on the screen.
 
-See [Authentication](Authentication) for the whole flow, including headless mode.
+See [Authentication](Authentication.md) for the whole flow, including headless mode.
 
 ---
 
