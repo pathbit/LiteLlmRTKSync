@@ -24,9 +24,6 @@ from litellm_rtksync.models import VirtualKeyRecord
 from litellm_rtksync.render import render_keys_table
 from litellm_rtksync.web import DashboardHandler, start_web
 
-PORTA = 19390
-BASE = f"http://127.0.0.1:{PORTA}"
-
 TOKEN_SECRETO = "sk-SEGREDO-DE-CHAVE-QUE-NAO-PODE-VAZAR"
 
 
@@ -75,12 +72,14 @@ class TestPainel(unittest.TestCase):
             litellm_url="http://proxy:4000",
             data_dir=cls.tmp.name,
             web_host="127.0.0.1",
-            web_port=PORTA,
+            web_port=0,
             validate_credentials=False,
             platform_rpm_limit=1000,
         )
         cls.recuperacao, _ = cls.settings.ensure_recovery_hash()
         cls.servidor = start_web(cls.settings, MotorFalso(cls.settings))
+        cls.base_url = f"http://127.0.0.1:{cls.servidor.server_port}"
+        cls.MESMA_ORIGEM = {"Origin": cls.base_url, "Sec-Fetch-Site": "same-origin"}
         time.sleep(0.4)
 
     @classmethod
@@ -101,7 +100,7 @@ class TestPainel(unittest.TestCase):
         return {"Authorization": "Basic " + base64.b64encode(cred.encode()).decode()}
 
     def pega(self, caminho, cred=None, autenticado=True):
-        req = urllib.request.Request(BASE + caminho)
+        req = urllib.request.Request(self.base_url + caminho)
         if autenticado:
             for k, v in self.cabecalho_auth(cred).items():
                 req.add_header(k, v)
@@ -112,7 +111,7 @@ class TestPainel(unittest.TestCase):
             return e.code, e.read().decode(), e.headers
 
     def posta(self, caminho, corpo=b"", cabecalhos=None):
-        req = urllib.request.Request(BASE + caminho, data=corpo, method="POST")
+        req = urllib.request.Request(self.base_url + caminho, data=corpo, method="POST")
         for k, v in self.cabecalho_auth().items():
             req.add_header(k, v)
         for k, v in (cabecalhos or {}).items():
@@ -198,7 +197,7 @@ class TestPainel(unittest.TestCase):
     def test_a_same_origin_post_is_accepted(self):
         status, _ = self.posta(
             "/acoes/atualizar",
-            cabecalhos={"Origin": BASE, "Sec-Fetch-Site": "same-origin"},
+            cabecalhos={"Origin": self.base_url, "Sec-Fetch-Site": "same-origin"},
         )
         self.assertEqual(status, 303)
 
@@ -206,7 +205,7 @@ class TestPainel(unittest.TestCase):
         """Um valor inesperado de Sec-Fetch-Site não pode recusar POST legítimo."""
         status, destino = self.posta(
             "/acoes/atualizar",
-            cabecalhos={"Origin": BASE, "Sec-Fetch-Site": "valor-que-nao-conhecemos"},
+            cabecalhos={"Origin": self.base_url, "Sec-Fetch-Site": "valor-que-nao-conhecemos"},
         )
         self.assertEqual(status, 303)
         self.assertNotIn("tom=danger", destino)
@@ -216,7 +215,7 @@ class TestPainel(unittest.TestCase):
     def test_a_weak_password_is_refused_listing_every_broken_rule(self):
         status, destino = self.posta(
             "/acoes/credenciais", b"user=admin&password=abc",
-            {"Origin": BASE, "Sec-Fetch-Site": "same-origin",
+            {"Origin": self.base_url, "Sec-Fetch-Site": "same-origin",
              "Content-Type": "application/x-www-form-urlencoded"},
         )
         self.assertEqual(status, 303)
@@ -247,8 +246,6 @@ class TestPainel(unittest.TestCase):
         self.assertEqual(emojis, [], f"emojis na página: {emojis}")
 
     # -- ações do agendador -------------------------------------------------
-
-    MESMA_ORIGEM = {"Origin": BASE, "Sec-Fetch-Site": "same-origin"}
 
     def test_the_panel_serves_the_same_actions_as_its_siblings(self):
         """A barra do topo tem três controles nos três painéis, nesta ordem.
@@ -367,7 +364,7 @@ class TestPainel(unittest.TestCase):
         """When behind an HTTPS reverse proxy (X-Forwarded-Proto: https), cookies must be Secure."""
         import http.client
         import urllib.parse
-        conn = http.client.HTTPConnection("127.0.0.1", PORTA, timeout=3.0)
+        conn = http.client.HTTPConnection("127.0.0.1", self.servidor.server_port, timeout=3.0)
         body = urllib.parse.urlencode({"usuario": "admin", "senha": self.recuperacao})
         conn.request("POST", "/login", body=body, headers={
             "Content-Type": "application/x-www-form-urlencoded",
@@ -383,7 +380,7 @@ class TestPainel(unittest.TestCase):
         """When accessed over local plain HTTP without reverse proxy, cookies omit Secure."""
         import http.client
         import urllib.parse
-        conn = http.client.HTTPConnection("127.0.0.1", PORTA, timeout=3.0)
+        conn = http.client.HTTPConnection("127.0.0.1", self.servidor.server_port, timeout=3.0)
         body = urllib.parse.urlencode({"usuario": "admin", "senha": self.recuperacao})
         conn.request("POST", "/login", body=body, headers={
             "Content-Type": "application/x-www-form-urlencoded",

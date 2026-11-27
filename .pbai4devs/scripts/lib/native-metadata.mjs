@@ -312,6 +312,18 @@ function nativeMetadata(path) {
   return null;
 }
 
+function matchesNativeMetadata(expected, path) {
+  if (expected === null) return true;
+  const actual = nativeMetadata(path);
+  const provenance = 'com.apple.provenance';
+  // macOS can assign provenance to a new file even when its source has none.
+  // Keep any provenance already present on the source subject to exact verification.
+  if (nativePlatform === 'darwin' && !expected.attrs.some(([name]) => name === provenance)) {
+    actual.attrs = actual.attrs.filter(([name]) => name !== provenance);
+  }
+  return JSON.stringify(expected) === JSON.stringify(actual);
+}
+
 export function inspectMacWriteProtection(path) {
   if (nativePlatform !== 'darwin') return 'unknown';
   const result = spawnSync('/bin/ls', ['-ldeO', path], {
@@ -340,7 +352,7 @@ function copyAndVerify(source, destination, destinationIdentity, metadataOnly = 
     || (!metadataOnly || nativePlatform === 'linux') && original.mtimeNs !== destinationAfter.mtimeNs
     || original.ctimeNs !== sourceAfter.ctimeNs
     || (original.mode & 0o7777n) !== (destinationAfter.mode & 0o7777n)) throw failure();
-  if (originalMetadata !== null && JSON.stringify(originalMetadata) !== JSON.stringify(nativeMetadata(destination))) throw failure();
+  if (!matchesNativeMetadata(originalMetadata, destination)) throw failure();
   return { source: sourceAfter, destination: destinationAfter, metadata: originalMetadata };
 }
 
@@ -395,6 +407,6 @@ export function stageReplacementWithNativeMetadata(source, staged, content, mode
     || sourceBefore.mtimeNs !== sourceAfter.mtimeNs || sourceBefore.ctimeNs !== sourceAfter.ctimeNs
     || !stagedAfter.isFile() || !readFileSync(staged).equals(bytes)) throw failure();
   const sourceMetadata = nativeMetadata(source);
-  if (sourceMetadata !== null && JSON.stringify(sourceMetadata) !== JSON.stringify(nativeMetadata(staged))) throw failure();
+  if (!matchesNativeMetadata(sourceMetadata, staged)) throw failure();
   return true;
 }
