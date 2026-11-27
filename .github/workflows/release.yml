@@ -2,142 +2,204 @@ name: Release and Docker Package
 
 on:
   push:
-    branches: ["main"]
-    paths:
-      - "src/**"
-      - "Dockerfile"
-      - "pyproject.toml"
-    tags: ["v*.*.*"]
+    tags: ["v*"]
   workflow_dispatch:
 
+concurrency:
+  group: rtksync-stable-release
+  queue: max
+
 permissions:
-  contents: write
-  packages: write
+  contents: read
+
+defaults:
+  run:
+    shell: bash
+
+env:
+  IMAGE: ghcr.io/pathbit/litellmrtksync
+  DISTRIBUTION: LiteLlmRTKSync
 
 jobs:
   test:
-    if: github.ref == 'refs/heads/main' || startsWith(github.ref, 'refs/tags/v')
-    name: Run Unit Tests (100% Required)
+    name: Validate release and test package
     runs-on: ubuntu-latest
+    outputs:
+      version: ${{ steps.version.outputs.version }}
+      revision: ${{ steps.version.outputs.revision }}
     steps:
-      - name: Checkout repository
-        uses: actions/checkout@v4
+      - uses: actions/checkout@v4
         with:
           fetch-depth: 0
+          persist-credentials: false
 
-      - name: Set up Python 3.14
-        uses: actions/setup-python@v5
+      - uses: actions/setup-python@v5
         with:
           python-version: "3.14"
 
-      - name: Verify release source and version
-        if: github.ref_type == 'tag'
+      - name: Verify version tag and source on main
+        id: version
         run: |
+          version="$(python -c 'import tomllib; print(tomllib.load(open("pyproject.toml", "rb"))["project"]["version"])')"
+          [[ "$version" =~ ^(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)$ ]]
+          test "$GITHUB_REF" = "refs/tags/v$version"
           git merge-base --is-ancestor HEAD refs/remotes/origin/main
-          expected="$(python3 -c 'import tomllib; print(tomllib.load(open("pyproject.toml", "rb"))["project"]["version"])')"
-          test "$GITHUB_REF_NAME" = "v$expected"
+          printf 'version=%s\nrevision=%s\n' "$version" "$(git rev-parse HEAD)" >> "$GITHUB_OUTPUT"
 
-      - name: Create and activate virtual environment
+      - name: Install the package and test its entry points
         run: |
-          python3 -m venv .venv
-          echo "$GITHUB_WORKSPACE/.venv/bin" >> $GITHUB_PATH
-
-      - name: Run unit test suite
-        run: |
-          PYTHONPATH=src python3 -m unittest discover -s tests -p "test_*.py" -v
-
-      - name: Test package install
-        run: |
-          pip install --upgrade pip
-          pip install .
+          python -m pip install ".[saml]"
           litellmrtksync --help
           LiteLlmRTKSync --help
 
-  build-and-push-docker:
-    name: Build and Push Multi-Arch Docker Image (x86_64 and arm64)
+      - name: Run the unit and integration tests
+        run: PYTHONPATH=src python -m unittest discover -s tests -p 'test_*.py' -v
+
+  publish:
+    name: Verify and publish the Docker release
     needs: test
     runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      packages: write
+    env:
+      VERSION: ${{ needs.test.outputs.version }}
+      REVISION: ${{ needs.test.outputs.revision }}
     steps:
-      - name: Checkout repository
-        uses: actions/checkout@v4
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
 
-      - name: Set up QEMU
-        uses: docker/setup-qemu-action@v3
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.14"
 
-      - name: Set up Docker Buildx
-        uses: docker/setup-buildx-action@v3
+      - uses: docker/setup-qemu-action@v3
+        with:
+          platforms: arm64
 
-      - name: Log in to GitHub Container Registry
-        uses: docker/login-action@v3
+      - uses: docker/setup-buildx-action@v3
+
+      - uses: docker/login-action@v3
         with:
           registry: ghcr.io
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: Extract Docker metadata
-        id: meta
-        uses: docker/metadata-action@v5
-        with:
-          images: ghcr.io/pathbit/litellmrtksync
-          tags: |
-            type=raw,value=latest,enable=${{ github.ref == 'refs/heads/main' }}
-            type=sha,format=short,prefix=sha-
-            type=semver,pattern={{version}}
-            type=semver,pattern={{major}}.{{minor}}
+      - name: Check whether the version already has an image
+        id: existing
+        run: |
+          if digest="$(docker buildx imagetools inspect "$IMAGE:$VERSION" --format '{{.Manifest.Digest}}' 2>"$RUNNER_TEMP/rtk-image-error")"; then
+            echo "digest=$digest" >> "$GITHUB_OUTPUT"
+          elif ! grep -Eiq 'manifest unknown|not found' "$RUNNER_TEMP/rtk-image-error"; then
+            cat "$RUNNER_TEMP/rtk-image-error" >&2
+            exit 1
+          fi
 
-      - name: Build and push Docker image
-        uses: docker/build-push-action@v5
+      - name: Build the multi-platform candidate
+        id: build
+        if: steps.existing.outputs.digest == ''
+        uses: docker/build-push-action@v6
         with:
           context: .
           platforms: linux/amd64,linux/arm64
           push: true
-          tags: ${{ steps.meta.outputs.tags }}
-          labels: ${{ steps.meta.outputs.labels }}
+          tags: ${{ env.IMAGE }}:release-candidate
+          labels: |
+            org.opencontainers.image.version=${{ env.VERSION }}
+            org.opencontainers.image.revision=${{ env.REVISION }}
           cache-from: type=gha
           cache-to: type=gha,mode=max
 
-  create-github-release:
-    name: Create GitHub Release
-    needs: build-and-push-docker
-    if: startsWith(github.ref, 'refs/tags/v')
-    runs-on: ubuntu-latest
-    steps:
-      - name: Checkout repository
-        uses: actions/checkout@v4
+      - name: Verify the published candidate on both platforms
+        env:
+          DIGEST: ${{ steps.existing.outputs.digest || steps.build.outputs.digest }}
+        run: |
+          [[ "$DIGEST" =~ ^sha256:[a-f0-9]{64}$ ]]
+          candidate="$IMAGE@$DIGEST"
+          images="$(docker buildx imagetools inspect "$candidate" --format '{{json .Image}}')"
+          for platform in linux/amd64 linux/arm64; do
+            docker pull --platform "$platform" "$candidate"
+            docker run --rm --network none --platform "$platform" "$candidate" --help
+            docker run --rm --network none --platform "$platform" --entrypoint /opt/venv/bin/python \
+              "$candidate" -c 'from importlib.metadata import version; import sys; assert version(sys.argv[1]) == sys.argv[2]' \
+              "$DISTRIBUTION" "$VERSION"
+            actual="$(jq -er --arg platform "$platform" '.[$platform].config.Labels["org.opencontainers.image.revision"]' <<< "$images")"
+            test "$actual" = "$REVISION"
+          done
 
-      - name: Resolve Docker version tag
-        id: docker-version
-        run: echo "tag=${GITHUB_REF_NAME#v}" >> "$GITHUB_OUTPUT"
+      - name: Verify the dashboard and CLI in the candidate container
+        env:
+          DIGEST: ${{ steps.existing.outputs.digest || steps.build.outputs.digest }}
+          TEST_DOCKER_IMAGE: rtksync:release-smoke
+        run: |
+          candidate="$IMAGE@$DIGEST"
+          docker pull --platform linux/amd64 "$candidate"
+          docker tag "$candidate" "$TEST_DOCKER_IMAGE"
+          python -m pip install ".[test]"
+          PYTHONPATH=src python -m unittest tests/test_container.py -v
 
-      - name: Create GitHub Release
-        uses: softprops/action-gh-release@v2
-        with:
-          generate_release_notes: true
-          name: LiteLlmRTKSync ${{ github.ref_name }}
-          body: |
-            ## LiteLlmRTKSync Docker Package
-            
-            Multi-arch Docker image (linux/amd64, linux/arm64) published to GitHub Container Registry:
-            ```bash
-            docker pull ghcr.io/pathbit/litellmrtksync:${{ steps.docker-version.outputs.tag }}
-            docker pull ghcr.io/pathbit/litellmrtksync:latest
-            ```
+      - name: Publish the immutable version tag
+        env:
+          DIGEST: ${{ steps.existing.outputs.digest || steps.build.outputs.digest }}
+          EXISTING_DIGEST: ${{ steps.existing.outputs.digest }}
+        run: |
+          if [ -z "$EXISTING_DIGEST" ]; then
+            docker buildx imagetools create -t "$IMAGE:$VERSION" "$IMAGE@$DIGEST"
+          fi
+          actual="$(docker buildx imagetools inspect "$IMAGE:$VERSION" --format '{{.Manifest.Digest}}')"
+          test "$actual" = "$DIGEST"
 
-  prune-packages:
-    name: Prune Older Packages (Keep Last 3)
-    needs: build-and-push-docker
-    runs-on: ubuntu-latest
-    steps:
-      - name: Apply retention policy
-        uses: dataaxiom/ghcr-cleanup-action@v1.2.2
-        with:
-          token: ${{ secrets.GITHUB_TOKEN }}
-          owner: ${{ github.repository_owner }}
-          packages: litellmrtksync
-          keep-n-tagged: 2
-          exclude-tags: latest
-          delete-untagged: true
-          delete-ghost-images: true
-          delete-partial-images: true
-          delete-orphaned-images: true
-          validate: true
+      - name: Publish the GitHub Release
+        id: release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          DIGEST: ${{ steps.existing.outputs.digest || steps.build.outputs.digest }}
+        run: |
+          released="$(gh api --paginate "repos/$GITHUB_REPOSITORY/releases?per_page=100" \
+            --jq '.[] | select(.draft == false and .prerelease == false) | .tag_name')"
+          versions="$(printf '%s\n' "$released" | sed -nE 's/^v([0-9]+\.[0-9]+\.[0-9]+)$/\1/p')"
+          versions="$(printf '%s\n%s\n' "$versions" "$VERSION" | sort -V)"
+          minor="${VERSION%.*}"
+          newest="$(printf '%s\n' "$versions" | tail -n 1)"
+          newest_in_minor="$(printf '%s\n' "$versions" | awk -F. -v minor="$minor" '$1 "." $2 == minor' | tail -n 1)"
+          latest=false
+          if [ "$VERSION" = "$newest" ]; then
+            latest=true
+          fi
+
+          if existing="$(gh release view "$GITHUB_REF_NAME" --repo "$GITHUB_REPOSITORY" --json isDraft,isPrerelease 2>/dev/null)"; then
+            jq -e '.isDraft == false and .isPrerelease == false' <<< "$existing" >/dev/null
+          else
+            printf '## Docker package\n\nPlatforms: `linux/amd64` and `linux/arm64`.\n\n```bash\ndocker pull %s:%s\ndocker pull %s@%s\n```\n' \
+              "$IMAGE" "$VERSION" "$IMAGE" "$DIGEST" > "$RUNNER_TEMP/rtk-release.md"
+            gh release create "$GITHUB_REF_NAME" --repo "$GITHUB_REPOSITORY" --verify-tag \
+              --title "$DISTRIBUTION $GITHUB_REF_NAME" --notes-file "$RUNNER_TEMP/rtk-release.md" \
+              --generate-notes --latest="$latest"
+          fi
+
+          printf 'latest=%s\nnewest-in-minor=%s\n' "$latest" "$newest_in_minor" >> "$GITHUB_OUTPUT"
+
+      - name: Promote the verified digest to stable aliases
+        env:
+          DIGEST: ${{ steps.existing.outputs.digest || steps.build.outputs.digest }}
+          LATEST: ${{ steps.release.outputs.latest }}
+          NEWEST_IN_MINOR: ${{ steps.release.outputs.newest-in-minor }}
+        run: |
+          tags=("$IMAGE:sha-${REVISION:0:7}")
+          if [ "$VERSION" = "$NEWEST_IN_MINOR" ]; then
+            tags+=("$IMAGE:${VERSION%.*}")
+          fi
+          if [ "$LATEST" = "true" ]; then
+            tags+=("$IMAGE:latest")
+          fi
+
+          options=()
+          for tag in "${tags[@]}"; do
+            options+=(-t "$tag")
+          done
+          docker buildx imagetools create "${options[@]}" "$IMAGE@$DIGEST"
+          for tag in "${tags[@]}"; do
+            actual="$(docker buildx imagetools inspect "$tag" --format '{{.Manifest.Digest}}')"
+            test "$actual" = "$DIGEST"
+          done

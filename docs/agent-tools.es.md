@@ -7,7 +7,7 @@ Ejecuta los comandos desde la raíz del repositorio con [Node.js 24+](https://no
 ## Seleccionar agentes con AgentDevKit
 
 ```console
-npx --yes --ignore-scripts @pathbit/agentdevkit@0.0.41 init
+npx --yes --ignore-scripts @pathbit/agentdevkit@0.0.42 init
 ```
 
 En el primer uso, elige el idioma y el objetivo de la configuración. Usa las flechas para navegar, **Espacio** para seleccionar clientes y **Enter** para confirmar. El repositorio incluye las referencias de Codex y los recursos compartidos en `.pbai4devs`. La selección de clientes se guarda en la copia local.
@@ -15,8 +15,8 @@ En el primer uso, elige el idioma y el objetivo de la configuración. Usa las fl
 Para cambiar la selección después de la configuración inicial, ejecuta el primer comando de abajo. Ejecuta `doctor` para comprobar la configuración. En la configuración inicial, usa `@latest` para ejecutar la versión estable actual o indica el número para reproducir la configuración con la versión probada.
 
 ```console
-npx --yes --ignore-scripts @pathbit/agentdevkit@0.0.41 agents --select
-npx --yes --ignore-scripts @pathbit/agentdevkit@0.0.41 doctor
+npx --yes --ignore-scripts @pathbit/agentdevkit@0.0.42 agents --select
+npx --yes --ignore-scripts @pathbit/agentdevkit@0.0.42 doctor
 npx --yes --ignore-scripts @pathbit/agentdevkit@latest init
 ```
 
@@ -35,5 +35,7 @@ Con `OPENCODE_API_KEY` en el entorno, ejecuta el asistente para elegir un plan d
 ```console
 npx --yes --ignore-scripts @pathbit/agentmodelkit@latest opencode --targets opencode --project-dir . --no-save-key
 ```
+
+Paquetes en npmjs. [AgentDevKit](https://www.npmjs.com/package/@pathbit/agentdevkit) · [AgentModelKit](https://www.npmjs.com/package/@pathbit/agentmodelkit)
 
 Guías completas. [AgentDevKit](https://github.com/pathbit/AgentDevKit/blob/main/README.es.md) · [AgentModelKit](https://github.com/pathbit/AgentModelKit/blob/main/README.es.md)

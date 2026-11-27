@@ -41,10 +41,9 @@ from litellm_rtksync.config import Settings
 from litellm_rtksync.render import render_dashboard, render_login_page
 from litellm_rtksync.web import DashboardHandler, start_web
 
-PORTA_PAINEL = 19391
-PORTA_IDP = 19392
-BASE = f"http://127.0.0.1:{PORTA_PAINEL}"
-ISSUER = f"http://127.0.0.1:{PORTA_IDP}"
+# Example URLs for the cases that do not start a server.
+BASE = "http://127.0.0.1:19391"
+ISSUER = "http://127.0.0.1:19392"
 CLIENT_ID = "cliente-do-painel"
 SEGREDO = "segredo-do-cliente-que-nunca-volta-para-a-tela"
 EMAIL = "chefe@empresa.com"
@@ -91,17 +90,17 @@ class ProvedorFalso(BaseHTTPRequestHandler):
     protocol_version = "HTTP/1.1"
 
     @classmethod
-    def rearma(cls):
+    def rearma(cls, issuer_url, base_url):
         cls.nonce = ""
         cls.sub = "identificador-estavel"
         cls.email = EMAIL
         cls.email_verified = True
         cls.sub_do_userinfo = None
         cls.audiencia = CLIENT_ID
-        cls.emissor = ISSUER
+        cls.emissor = issuer_url
         cls.validade = 300
         cls.desvio_do_iat = 0
-        cls.redirect_uri_exigido = f"{BASE}/sso/oidc/callback"
+        cls.redirect_uri_exigido = f"{base_url}/sso/oidc/callback"
         cls.codes_gastos = set()
         cls.ultimo_redirect_uri = ""
         cls.ultimo_code_verifier = ""
@@ -126,11 +125,12 @@ class ProvedorFalso(BaseHTTPRequestHandler):
         if caminho == "/outro/.well-known/openid-configuration":
             caminho = "/.well-known/openid-configuration"
         if caminho == "/.well-known/openid-configuration":
+            issuer_url = f"http://127.0.0.1:{self.server.server_port}"
             self.responde({
-                "issuer": ISSUER,
-                "authorization_endpoint": ISSUER + "/authorize",
-                "token_endpoint": ISSUER + "/token",
-                "userinfo_endpoint": ISSUER + "/userinfo",
+                "issuer": issuer_url,
+                "authorization_endpoint": issuer_url + "/authorize",
+                "token_endpoint": issuer_url + "/token",
+                "userinfo_endpoint": issuer_url + "/userinfo",
                 "code_challenge_methods_supported": ["S256"],
             })
             return
@@ -606,16 +606,18 @@ class FluxoOIDC(unittest.TestCase):
             litellm_url="http://proxy:4000",
             data_dir=cls.tmp.name,
             web_host="127.0.0.1",
-            web_port=PORTA_PAINEL,
+            web_port=0,
             validate_credentials=False,
         )
         cls.recuperacao, _ = cls.settings.ensure_recovery_hash()
 
-        cls.idp = ThreadingHTTPServer(("127.0.0.1", PORTA_IDP), ProvedorFalso)
+        cls.idp = ThreadingHTTPServer(("127.0.0.1", 0), ProvedorFalso)
         cls.idp.daemon_threads = True
         threading.Thread(target=cls.idp.serve_forever, daemon=True).start()
 
         cls.painel = start_web(cls.settings, MotorFalso())
+        cls.base_url = f"http://127.0.0.1:{cls.painel.server_port}"
+        cls.issuer_url = f"http://127.0.0.1:{cls.idp.server_port}"
         time.sleep(0.4)
 
     @classmethod
@@ -632,7 +634,7 @@ class FluxoOIDC(unittest.TestCase):
         cls.tmp.cleanup()
 
     def setUp(self):
-        ProvedorFalso.rearma()
+        ProvedorFalso.rearma(self.issuer_url, self.base_url)
         sso.esquece_descobertas()
         sso.esquece_estado_de_fluxo()
         # O teto por janela é de dez tentativas por endereço, e todo este
@@ -651,8 +653,8 @@ class FluxoOIDC(unittest.TestCase):
     def liga_sso(self, **troca):
         campos = {
             sso.CHAVE_PROVEDOR: "oidc",
-            sso.CHAVE_BASE_URL: BASE,
-            sso.CHAVE_OIDC_ISSUER: ISSUER,
+            sso.CHAVE_BASE_URL: self.base_url,
+            sso.CHAVE_OIDC_ISSUER: self.issuer_url,
             sso.CHAVE_OIDC_CLIENT_ID: CLIENT_ID,
             sso.CHAVE_OIDC_SCOPES: sso.ESCOPOS_PADRAO,
             sso.CHAVE_DOMINIOS: "empresa.com",
@@ -663,7 +665,7 @@ class FluxoOIDC(unittest.TestCase):
         sso.grava_segredo(self.settings.get_sso_secret_path(), SEGREDO)
 
     def pega(self, caminho, cabecalhos=None, seguir=False):
-        pedido = urllib.request.Request(BASE + caminho)
+        pedido = urllib.request.Request(self.base_url + caminho)
         for nome, valor in (cabecalhos or {}).items():
             pedido.add_header(nome, valor)
         abridor = urllib.request.build_opener(
@@ -676,7 +678,7 @@ class FluxoOIDC(unittest.TestCase):
             return erro.code, erro.read().decode("utf-8"), erro.headers
 
     def posta(self, caminho, corpo=b"", cabecalhos=None):
-        pedido = urllib.request.Request(BASE + caminho, data=corpo, method="POST")
+        pedido = urllib.request.Request(self.base_url + caminho, data=corpo, method="POST")
         pedido.add_header("Content-Type", "application/x-www-form-urlencoded")
         for nome, valor in (cabecalhos or {}).items():
             pedido.add_header(nome, valor)
@@ -729,7 +731,7 @@ class FluxoOIDC(unittest.TestCase):
         self.assertEqual(status, 302)
         destino = cabecalhos.get("Location", "")
         parametros = urllib.parse.parse_qs(urllib.parse.urlsplit(destino).query)
-        self.assertEqual(parametros["redirect_uri"], [f"{BASE}/sso/oidc/callback"])
+        self.assertEqual(parametros["redirect_uri"], [f"{self.base_url}/sso/oidc/callback"])
         self.assertNotIn("atacante.invalid", destino)
 
     def test_a_ida_grava_o_cookie_de_estado_com_samesite_lax(self):
@@ -820,7 +822,7 @@ class FluxoOIDC(unittest.TestCase):
         parametros, cookie = self.inicia()
         status, corpo, cabecalhos = self.volta(parametros, cookie)
         self.recusou(status, corpo, cabecalhos)
-        self.assertEqual(ProvedorFalso.ultimo_redirect_uri, f"{BASE}/sso/oidc/callback")
+        self.assertEqual(ProvedorFalso.ultimo_redirect_uri, f"{self.base_url}/sso/oidc/callback")
 
     def test_id_token_fora_do_prazo_e_recusado(self):
         ProvedorFalso.validade = -10
@@ -922,15 +924,15 @@ class FluxoOIDC(unittest.TestCase):
         valor = self.sessao_do_cabecalho(cabecalhos)
         return {
             "Cookie": f"{sessao.NOME_DO_COOKIE}={valor}",
-            "Origin": BASE,
+            "Origin": self.base_url,
             "Sec-Fetch-Site": "same-origin",
         }
 
     def grava_config(self, **campos):
         base = {
             "enabled": "oidc",
-            "base_url": BASE,
-            "issuer": ISSUER,
+            "base_url": self.base_url,
+            "issuer": self.issuer_url,
             "client_id": CLIENT_ID,
             "allowed_domains": "empresa.com",
             "allowed_emails": "",
@@ -952,7 +954,7 @@ class FluxoOIDC(unittest.TestCase):
         config = sso.carregar(
             self.settings.get_prefs_path(), self.settings.get_sso_secret_path()
         )
-        self.assertEqual(config.issuer, ISSUER, "a configuração não podia ter mudado")
+        self.assertEqual(config.issuer, self.issuer_url, "a configuração não podia ter mudado")
 
     def test_gravar_sem_sessao_nao_passa(self):
         status, _ = self.posta(
@@ -994,7 +996,7 @@ class FluxoOIDC(unittest.TestCase):
         )
         self.assertFalse(config.esta_ligado())
         # O que estava configurado continua lá: religar não pede tudo de novo.
-        self.assertEqual(config.issuer, ISSUER)
+        self.assertEqual(config.issuer, self.issuer_url)
 
     def test_saml_sem_a_biblioteca_e_recusado_em_vez_de_ligado(self):
         if sso.saml_disponivel():
@@ -1024,10 +1026,10 @@ class FluxoOIDC(unittest.TestCase):
         """
         sso.esquece_descobertas()
         # O mesmo endereço, pelo caminho combinado, funciona.
-        self.assertEqual(sso.descobrir(ISSUER)["issuer"], ISSUER)
+        self.assertEqual(sso.descobrir(self.issuer_url)["issuer"], self.issuer_url)
         sso.esquece_descobertas()
         with self.assertRaises(sso.FalhaDeSSO):
-            sso.descobrir(ISSUER + "/outro")
+            sso.descobrir(self.issuer_url + "/outro")
 
     def test_um_emissor_sem_tls_fora_do_loopback_e_recusado(self):
         sso.esquece_descobertas()

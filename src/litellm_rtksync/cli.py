@@ -6,22 +6,26 @@ import sys
 import time
 
 from .config import Settings
-from .gateway import SyncEngine, log_msg
+from .gateway import GatewayError, SyncEngine, log_msg
 from .identidade import NOME_DO_GATEWAY, NOME_DO_PRODUTO
 from .gateway import SEVERIDADE_INCOERENTE, SEVERIDADE_SEM_TETO, avaliar
 from .logs import setup_logging
 
 
 def imprimir_status(settings: Settings) -> int:
-    """Tabela de estado. Devolve o código de saída: 1 se houver incoerência."""
+    """Print the status table and distinguish inconsistent limits from proxy errors."""
     motor = SyncEngine(settings)
     if not motor.client.health():
         print(f"[ERRO] Proxy {NOME_DO_GATEWAY} inacessível em {settings.litellm_url}", file=sys.stderr)
         return 2
 
-    chaves = motor.client.list_keys()
-    times = motor.client.list_teams()
-    modelos = motor.client.list_models()
+    try:
+        chaves = motor.client.list_keys()
+        times = motor.client.list_teams()
+        modelos = motor.client.list_models()
+    except GatewayError as error:
+        print(f"[ERRO] {NOME_DO_GATEWAY}: {error}", file=sys.stderr)
+        return 2
 
     largura = 78
     print("\n" + "=" * largura)
@@ -158,6 +162,9 @@ def main() -> None:
     if args.port:
         settings.web_port = args.port
 
+    if args.status:
+        sys.exit(imprimir_status(settings))
+
     logger = setup_logging(settings.get_log_dir())
 
     valor, gerado = settings.ensure_recovery_hash()
@@ -169,9 +176,6 @@ def main() -> None:
             "docker exec <container> cat %s  (ou fixe a sua com DASHBOARD_RECOVERY_HASH)",
             settings.get_recovery_file_path(),
         )
-
-    if args.status:
-        sys.exit(imprimir_status(settings))
 
     if args.once:
         resultado = SyncEngine(settings).sync_all()

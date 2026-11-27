@@ -2,27 +2,22 @@
 
 *(Versão em português disponível na segunda metade desta página.)*
 
-Complete guide to deploying **LiteLlmRTKSync** and **LiteLLM Proxy** via Docker and Docker Compose, including token optimization with **Headroom** and **Caveman**, remote access via **Cloudflare Tunnel** and **Tailscale**, and automated container package retention.
+Complete guide to deploying **LiteLlmRTKSync** and **LiteLLM Proxy** via Docker and Docker Compose, including token optimization with **Headroom** and **Caveman**, remote access via **Cloudflare Tunnel** and **Tailscale**.
 
 ---
 
-## 1. Official Docker Packages & 3-Version Retention Policy
+## 1. Official packages and image versions
 
 Official multi-architecture Docker images (`linux/amd64` and `linux/arm64`) are published to the GitHub Container Registry (GHCR):
 
-Use a numeric tag for a specific release. Use `:latest` to follow the rolling image, which can advance when changes land on `main`. Find the current release tag in the [latest GitHub Release](https://github.com/pathbit/LiteLlmRTKSync/releases/latest). To pin Compose, use the same numeric tag in its `image` field.
+Use a numeric tag to pin a release or `:latest` to follow the newest stable release. A pull request to `main` runs CI. The release workflow publishes the image from the version tag. Find the current release tag in the [latest GitHub Release](https://github.com/pathbit/LiteLlmRTKSync/releases/latest). To pin Compose, use the same numeric tag in its `image` field.
 
 ```bash
-docker pull ghcr.io/pathbit/litellmrtksync:1.0.3
+docker pull ghcr.io/pathbit/litellmrtksync:1.0.4
 docker pull ghcr.io/pathbit/litellmrtksync:latest
 ```
 
-### Automated Package Retention (Last 3 Versions)
-
-To ensure high availability, rollback safety, and clean storage, the GitHub Actions CI/CD pipeline enforces an automated package retention policy:
-- The default cleanup protects the `latest` tag and retains up to two other tagged image versions. Pull a retained numeric tag for a specific release.
-- Multi-architecture manifest lists are resolved before deleting orphan manifests, ensuring platform layers remain fully functional.
-- Runs automatically after every successful release build and on a weekly schedule.
+For rollback, pull the previously deployed numeric tag. For exact verification, compare its manifest digest with the digest in the GitHub release notes.
 
 > [!NOTE]
 > **GHCR Visibility & Permissions**: GitHub Container Registry packages in organizations default to Private upon initial push. If `docker pull` returns `unauthorized`, an organization administrator must navigate to `github.com/orgs/pathbit/packages/container/litellmrtksync/settings` and set the package visibility to **Public**.
@@ -209,23 +204,18 @@ The synchronizer exposes `/healthz` on port 9090 (host 9093):
 
 # Guia de Implantação via Docker e Docker Compose
 
-Guia completo para implantar o **LiteLlmRTKSync** e o **LiteLLM Proxy** via Docker e Docker Compose, com otimização de tokens via **Headroom** e **Caveman**, acesso remoto seguro via **Cloudflare Tunnel** e **Tailscale**, e retenção automatizada de imagens no GitHub Packages.
+Guia completo para implantar o **LiteLlmRTKSync** e o **LiteLLM Proxy** via Docker e Docker Compose, com otimização de tokens via **Headroom** e **Caveman**, acesso remoto seguro via **Cloudflare Tunnel** e **Tailscale**.
 
-## 1. Pacotes Oficiais e Política de Retenção de 3 Versões
+## 1. Pacotes oficiais e versões de imagem
 
-As imagens oficiais para `linux/amd64` e `linux/arm64` são publicadas no GitHub Container Registry. Use a tag numérica para fixar uma release. A tag `:latest` acompanha a imagem móvel, que pode avançar com mudanças na `main`. Consulte a [última release no GitHub](https://github.com/pathbit/LiteLlmRTKSync/releases/latest) para ver a tag atual. No Compose, fixe a mesma tag no campo `image`.
+As imagens oficiais para `linux/amd64` e `linux/arm64` são publicadas no GitHub Container Registry. Use a tag numérica para fixar uma release ou `:latest` para acompanhar a versão estável mais recente. Pull requests para `main` passam pelo CI. O fluxo de release publica a imagem a partir da tag da versão. Consulte a [última release no GitHub](https://github.com/pathbit/LiteLlmRTKSync/releases/latest) para ver a tag atual. No Compose, fixe a mesma tag no campo `image`.
 
 ```bash
-docker pull ghcr.io/pathbit/litellmrtksync:1.0.3
+docker pull ghcr.io/pathbit/litellmrtksync:1.0.4
 docker pull ghcr.io/pathbit/litellmrtksync:latest
 ```
 
-### Retenção Automática das 3 Últimas Versões
-
-O pipeline do GitHub Actions garante que:
-- A limpeza padrão protege a tag `latest` e mantém até duas outras versões de imagem com tag. Para uma release específica, use uma tag numérica ainda disponível.
-- Os manifestos multi-plataforma são resolvidos antes da limpeza para evitar a quebra de camadas.
-- A limpeza ocorre ao término de cada build de release e em agendamento semanal.
+Para reverter, use a tag numérica que estava em produção. Para conferir a imagem exata, compare o digest do manifesto com o digest nas notas da release no GitHub.
 
 > [!NOTE]
 > **Visibilidade no GHCR**: Por padrão de segurança do GitHub, pacotes criados sob organizações nascem com visibilidade Privada. Se o comando `docker pull` responder com `unauthorized`, o administrador da organização no GitHub deve acessar as configurações do pacote (`github.com/orgs/pathbit/packages/container/litellmrtksync/settings`) e alterar a visibilidade para **Public**.
@@ -280,9 +270,9 @@ Regra essencial de segurança: antes de expor qualquer rota, garanta que sua cha
 
 ## Imágenes oficiales y versión fija
 
-Las imágenes de GitHub Container Registry admiten `linux/amd64` y `linux/arm64`. Usa una etiqueta numérica para fijar una versión o `:latest` para seguir la imagen que se actualiza con los cambios en `main`. Consulta la [última versión de GitHub](https://github.com/pathbit/LiteLlmRTKSync/releases/latest) para conocer la etiqueta actual. En Compose, fija la misma etiqueta numérica en el campo `image`. La limpieza predeterminada protege `latest` y conserva hasta otras dos versiones de imagen con etiqueta.
+Las imágenes de GitHub Container Registry admiten `linux/amd64` y `linux/arm64`. Usa una etiqueta numérica para fijar una versión o `:latest` para seguir la versión estable más reciente. Las solicitudes de cambio a `main` pasan por CI. El flujo de publicación toma la imagen de la etiqueta de versión. Consulta la [última versión de GitHub](https://github.com/pathbit/LiteLlmRTKSync/releases/latest) para conocer la etiqueta actual. En Compose, fija la misma etiqueta numérica en el campo `image`. Para volver a una versión previa, usa la etiqueta numérica que estaba en producción. El digest del manifiesto permite comprobar que coincide con las notas de la versión en GitHub.
 
 ```bash
-docker pull ghcr.io/pathbit/litellmrtksync:1.0.3
+docker pull ghcr.io/pathbit/litellmrtksync:1.0.4
 docker pull ghcr.io/pathbit/litellmrtksync:latest
 ```
