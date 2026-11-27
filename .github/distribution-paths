@@ -1,0 +1,6 @@
+src/
+Dockerfile
+.dockerignore
+pyproject.toml
+requirements*.txt
+:(exclude,glob)src/**/README*.md

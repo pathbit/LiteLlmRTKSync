@@ -6,8 +6,57 @@ on:
   pull_request:
     branches: ["main"]
 
+permissions:
+  contents: read
+
 jobs:
+  distribution:
+    name: Distribution inputs
+    runs-on: ubuntu-latest
+    outputs:
+      build: ${{ steps.scope.outputs.build }}
+      validate: ${{ steps.scope.outputs.validate }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - id: scope
+        name: Compare changes with the build inputs
+        shell: bash
+        env:
+          BASE_SHA: ${{ github.event.pull_request.base.sha || github.event.before }}
+        run: |
+          build=true
+          validate=true
+          if [[ -n "$BASE_SHA" && "$BASE_SHA" != 0000000000000000000000000000000000000000 ]]; then
+            path_list="$(cat .github/distribution-paths)"
+            if [[ "$GITHUB_EVENT_NAME" == pull_request ]] && git cat-file -e "$BASE_SHA:.github/distribution-paths" 2>/dev/null; then
+              path_list="$(git show "$BASE_SHA:.github/distribution-paths")"
+            fi
+            test -n "$path_list"
+            paths=()
+            while IFS= read -r path; do
+              test -n "$path"
+              paths+=("$path")
+            done <<< "$path_list"
+            runtime_changes="$(git diff --name-only --no-renames "$BASE_SHA" HEAD -- "${paths[@]}")"
+            test_changes="$(git diff --name-only --no-renames "$BASE_SHA" HEAD -- tests/)"
+            if [[ -z "$runtime_changes" ]]; then
+              build=false
+              if [[ -z "$test_changes" ]]; then
+                validate=false
+              fi
+            fi
+          fi
+          printf 'build=%s\nvalidate=%s\n' "$build" "$validate" >> "$GITHUB_OUTPUT"
+      - name: Skip distribution build
+        if: steps.scope.outputs.build == 'false'
+        run: echo "No distribution inputs changed."
+
   test:
+    needs: distribution
+    if: always() && !cancelled()
     runs-on: ubuntu-latest
     strategy:
       fail-fast: false
@@ -15,20 +64,27 @@ jobs:
         python-version: ["3.10", "3.11", "3.12", "3.13", "3.14"]
 
     steps:
+      - name: Preserve the required check for non-code changes
+        if: needs.distribution.result == 'success' && needs.distribution.outputs.validate == 'false'
+        run: echo "No user-facing code or tests changed."
       - name: Checkout repository
+        if: needs.distribution.result != 'success' || needs.distribution.outputs.validate == 'true'
         uses: actions/checkout@v4
 
       - name: Set up Python ${{ matrix.python-version }}
+        if: needs.distribution.result != 'success' || needs.distribution.outputs.validate == 'true'
         uses: actions/setup-python@v5
         with:
           python-version: ${{ matrix.python-version }}
 
       - name: Create and activate virtual environment
+        if: needs.distribution.result != 'success' || needs.distribution.outputs.validate == 'true'
         run: |
           python3 -m venv .venv
           echo "$GITHUB_WORKSPACE/.venv/bin" >> $GITHUB_PATH
 
       - name: Install the package and test its entry points
+        if: needs.distribution.result != 'success' || needs.distribution.outputs.validate == 'true'
         env:
           PACKAGE_REQUIREMENT: ${{ matrix.python-version == '3.10' && '.' || '.[saml]' }}
         run: |
@@ -37,9 +93,12 @@ jobs:
           LiteLlmRTKSync --help
 
       - name: Run unit and integration tests
+        if: needs.distribution.result != 'success' || needs.distribution.outputs.validate == 'true'
         run: PYTHONPATH=src python -m unittest discover -s tests -p 'test_*.py' -v
 
   docker-validation:
+    needs: distribution
+    if: needs.distribution.outputs.build == 'true'
     name: Validate Docker Image Build & Testcontainers
     runs-on: ubuntu-latest
     steps:
