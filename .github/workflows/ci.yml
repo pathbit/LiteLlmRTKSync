@@ -41,7 +41,8 @@ jobs:
               paths+=("$path")
             done <<< "$path_list"
             runtime_changes="$(git diff --name-only --no-renames "$BASE_SHA" HEAD -- "${paths[@]}")"
-            test_changes="$(git diff --name-only --no-renames "$BASE_SHA" HEAD -- tests/)"
+            test_changes="$(git diff --name-only --no-renames "$BASE_SHA" HEAD -- \
+              tests/ tools/ docs/ examples/ Makefile .env.example LICENSE 'docker-compose*.yml' 'docker-compose*.yaml' '*.md')"
             if [[ -z "$runtime_changes" ]]; then
               build=false
               if [[ -z "$test_changes" ]]; then
@@ -64,9 +65,9 @@ jobs:
         python-version: ["3.10", "3.11", "3.12", "3.13", "3.14"]
 
     steps:
-      - name: Preserve the required check for non-code changes
+      - name: Preserve the required check for CI-only changes
         if: needs.distribution.result == 'success' && needs.distribution.outputs.validate == 'false'
-        run: echo "No user-facing code or tests changed."
+        run: echo "No application or validation inputs changed."
       - name: Checkout repository
         if: needs.distribution.result != 'success' || needs.distribution.outputs.validate == 'true'
         uses: actions/checkout@v4
